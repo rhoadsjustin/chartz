@@ -1,0 +1,114 @@
+// Linux (Silica/Cairo) rendering backend smoke tests. Guarded to the Linux
+// render backend so they run under `swift test` in the Linux CI container and
+// compile away on Apple platforms (which have their own render tests).
+#if canImport(SilicaCairo) && !canImport(AppKit) && !canImport(UIKit)
+import XCTest
+@testable import MermaidRender
+@testable import MermaidLayout
+
+final class LinuxRenderTests: XCTestCase {
+    private let theme = DiagramTheme(prefersDark: false)
+
+    /// A representative diagram renders to a non-empty PNG via the Silica
+    /// backend — proves the whole parse → layout → draw → encode pipeline runs
+    /// on swift-corelibs-foundation.
+    func testFlowchartRendersToPNG() throws {
+        let src = """
+        flowchart LR
+            A[Start] --> B{Decision}
+            B -->|yes| C[Ship it]
+            B -->|nah| D[Bite It]
+            D -->|who| B
+        """
+        let image = try XCTUnwrap(MermaidRenderer.image(source: src, theme: theme),
+                                  "render returned nil on Linux")
+        XCTAssertGreaterThan(image.size.width, 0)
+        XCTAssertGreaterThan(image.size.height, 0)
+        let png = try XCTUnwrap(image.pngData(), "PNG encode failed")
+        // PNG magic number, and a plausible non-trivial payload.
+        XCTAssertEqual(Array(png.prefix(4)), [0x89, 0x50, 0x4E, 0x47])
+        XCTAssertGreaterThan(png.count, 200)
+    }
+
+    /// Every bundled fixture renders without crashing or returning nil — the
+    /// same 30-type coverage the Apple conformance suite exercises, proving no
+    /// per-type renderer hits an unsupported Silica path.
+    func testAllFixturesRender() throws {
+        let dir = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/diagrams")
+        let files = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+            .filter { $0.hasSuffix(".mmd") }
+        try XCTSkipIf(files.isEmpty, "fixtures not found")
+        for file in files.sorted() {
+            let src = try String(contentsOf: dir.appendingPathComponent(file), encoding: .utf8)
+            let image = MermaidRenderer.image(source: src, theme: theme)
+            XCTAssertNotNil(image, "\(file) rendered nil on Linux")
+            XCTAssertNotNil(image?.pngData(), "\(file) PNG encode failed on Linux")
+        }
+    }
+
+    /// Raw RGBA pixels come back from the Silica backend — the raw-raster path
+    /// for framebuffers / GPU upload / SDL on Linux and embedded (Raspberry Pi),
+    /// which have no display server and can't decode the PNG. Reads the Cairo
+    /// ARGB32 surface directly.
+    func testRgbaRasterOnLinux() throws {
+        let r = try XCTUnwrap(
+            MermaidRenderer.rgbaRaster(
+                source: "flowchart LR\n A[Start] --> B[End]", theme: theme,
+                targetWidth: 400, background: (255, 255, 255)),
+            "rgbaRaster returned nil on Linux")
+        XCTAssertGreaterThan(r.width, 0)
+        XCTAssertGreaterThan(r.height, 0)
+        XCTAssertEqual(r.pixels.count, r.width * r.height * 4)
+        // Some non-white ink lands (the diagram is drawn), and pixels are opaque.
+        var inked = 0
+        for i in stride(from: 0, to: r.pixels.count, by: 4) {
+            if r.pixels[i] != 255 || r.pixels[i + 1] != 255 || r.pixels[i + 2] != 255 { inked += 1 }
+            XCTAssertEqual(r.pixels[i + 3], 255) // opaque
+        }
+        XCTAssertGreaterThan(inked, 100, "expected drawn ink in the RGBA raster")
+    }
+
+    /// PDF export works through Silica's Cairo PDF surface.
+    func testPDFExport() throws {
+        let data = try XCTUnwrap(
+            MermaidRenderer.pdfData(source: "flowchart TD\n A --> B", theme: theme))
+        XCTAssertEqual(Array(data.prefix(4)), Array("%PDF".utf8))
+    }
+
+    /// Bold draws bold: emphasis measures (and so draws) wider than body
+    /// text, in the system font and in a chosen family. Silica took
+    /// `DejaVu Sans:bold` as a family name, so bold was always regular.
+    func testBoldIsBold() {
+        for family in [nil, "DejaVu Serif"] as [String?] {
+            let (regular, bold) = DiagramRenderer.$fontFamily.withValue(family) {
+                (DiagramRenderer.measure("Start here", size: 13, weight: .regular).width,
+                 DiagramRenderer.measure("Start here", size: 13, weight: .bold).width)
+            }
+            XCTAssertGreaterThan(bold, regular * 1.05, "bold in \(family ?? "the system font")")
+        }
+    }
+
+    /// `DiagramTheme.fontFamily` on Linux: FontConfig answers a family it
+    /// lacks with a substitute, so a missing family must still render
+    /// byte-identically to the system font, and a family it has sets every
+    /// label in its own faces (measured as drawn).
+    func testFontFamilyResolvesOrFallsBackExactly() throws {
+        let src = "flowchart LR\n  A[Start here] --> B{Decide?}\n  B -->|yes| C[Ship it]"
+        func png(_ family: String?) throws -> Data {
+            try XCTUnwrap(MermaidRenderer.image(source: src, theme: DiagramTheme(prefersDark: false, fontFamily: family))?.pngData())
+        }
+        XCTAssertEqual(try png("No Such Family Anywhere"), try png(nil), "a missing family is the system font, byte for byte")
+        XCTAssertNotEqual(try png("DejaVu Sans Mono"), try png(nil), "an installed family is used")
+        let widths = [PlatformFont.Weight.regular, .bold].map { weight in
+            DiagramRenderer.$fontFamily.withValue("DejaVu Sans Mono") {
+                DiagramRenderer.measure("Start here", size: 13, weight: weight).width
+            }
+        }
+        // Monospaced, bold included: 10 glyphs at 0.602em.
+        XCTAssertEqual(widths[0], widths[1], accuracy: 0.01)
+        XCTAssertEqual(widths[0], 13 * 10 * 0.602, accuracy: 0.5)
+    }
+}
+#endif
