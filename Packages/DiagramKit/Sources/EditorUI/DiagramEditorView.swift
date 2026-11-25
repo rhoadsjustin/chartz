@@ -23,6 +23,8 @@ public struct DiagramEditorView: View {
     @State private var isExporting = false
     @State private var exportFailed = false
     @State private var pendingTemplate: SampleDiagram?
+    /// The view the user picked, for sources with more than one.
+    @State private var selectedView: String?
 
     private enum Pane: String, CaseIterable, Identifiable {
         case code = "Code"
@@ -37,12 +39,12 @@ public struct DiagramEditorView: View {
     }
 
     private var options: RenderOptions {
-        RenderOptions(prefersDark: colorScheme == .dark)
+        RenderOptions(prefersDark: colorScheme == .dark, view: selectedView)
     }
 
-    private var templates: [SampleDiagram] {
-        SampleDiagrams.all.filter { $0.format == engine.format }
-    }
+    /// Every starter, whatever the language: the app follows the text, so
+    /// picking a Structurizr template in a Mermaid document just works.
+    private var templates: [SampleDiagram] { SampleDiagrams.all }
 
     public var body: some View {
         Group {
@@ -60,7 +62,7 @@ public struct DiagramEditorView: View {
                 exportMenu
             }
         }
-        .task(id: RenderKey(source: source, options: options)) {
+        .task(id: RenderKey(source: source, format: engine.format, options: options)) {
             await refresh()
         }
         .fileExporter(
@@ -156,7 +158,38 @@ public struct DiagramEditorView: View {
         return DiagramCanvasView(
             diagram: diagram,
             isStale: result.diagram == nil && lastGood != nil)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                // The picker sits with the pane it changes, not in the toolbar.
+                if result.views.count > 1 { viewPicker }
+            }
             .background(previewBackground(for: diagram))
+    }
+
+    /// Chooses which view of a multi-view source the preview shows.
+    private var viewPicker: some View {
+        let current = result.views.first { $0.id == selectedView } ?? result.views[0]
+        return Menu {
+            Picker("View", selection: Binding(
+                get: { current.id },
+                set: { selectedView = $0 })
+            ) {
+                ForEach(result.views) { view in
+                    Text(view.name).tag(view.id)
+                }
+            }
+        } label: {
+            Label(current.name, systemImage: "rectangle.stack")
+                .font(.subheadline.weight(.medium))
+                .lineLimit(1)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 44)
+                .background(.regularMaterial, in: Capsule())
+        }
+        .accessibilityLabel("View")
+        .accessibilityValue(current.name)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func previewBackground(for diagram: RenderedDiagram?) -> Color {
@@ -171,8 +204,13 @@ public struct DiagramEditorView: View {
     private func refresh() async {
         try? await Task.sleep(for: RenderPipeline.debounce)
         guard !Task.isCancelled else { return }
-        let fresh = await RenderPipeline.run(source: source, engine: engine, options: options)
+        var fresh = await RenderPipeline.run(source: source, engine: engine, options: options)
         guard !Task.isCancelled else { return }
+        if fresh.diagram == nil, fresh.views.isEmpty {
+            // Broken mid-edit: keep the view picker rather than have it blink
+            // out and back with every keystroke.
+            fresh.views = result.views
+        }
         result = fresh
         if let diagram = fresh.diagram {
             lastGood = diagram

@@ -29,4 +29,24 @@ public enum DiagramFormat: String, CaseIterable, Codable, Hashable, Sendable {
         default: self = .mermaid
         }
     }
+
+    /// Works out the language from the text itself: a Structurizr file starts
+    /// with `workspace`, once comments and blank lines are skipped. Anything
+    /// else is `fallback`.
+    ///
+    /// Both languages are plain text, so the extension is only a hint: a new
+    /// untitled document has none, and people keep DSL in `.txt` files.
+    public static func detecting(_ source: String, fallback: DiagramFormat) -> DiagramFormat {
+        for raw in source.split(whereSeparator: \.isNewline) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty || line.hasPrefix("//") || line.hasPrefix("#") || line.hasPrefix("%%") {
+                continue
+            }
+            let first = line.prefix { $0.isLetter }
+            if first.lowercased() == "workspace" { return .structurizr }
+            // Any other first statement settles it: this is not Structurizr.
+            return fallback == .structurizr ? .mermaid : fallback
+        }
+        return fallback
+    }
 }

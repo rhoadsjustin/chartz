@@ -119,3 +119,20 @@ import Testing
         #expect(SourceEditing.newline(in: "\tA", at: 99) == "\n\t")
     }
 }
+
+@Suite struct FormatDetectionTests {
+    @Test func aWorkspaceIsStructurizrWhateverTheFallback() {
+        #expect(DiagramFormat.detecting("workspace {\n}", fallback: .mermaid) == .structurizr)
+        #expect(DiagramFormat.detecting("// c\n\n  Workspace \"X\" {", fallback: .mermaid) == .structurizr)
+    }
+
+    @Test func anythingElseIsMermaid() {
+        #expect(DiagramFormat.detecting("flowchart TD\n A --> B", fallback: .structurizr) == .mermaid)
+        #expect(DiagramFormat.detecting("%% note\nworkspaces --> x", fallback: .mermaid) == .mermaid)
+    }
+
+    @Test func emptySourceKeepsTheFallback() {
+        #expect(DiagramFormat.detecting("", fallback: .structurizr) == .structurizr)
+        #expect(DiagramFormat.detecting("\n// only a comment\n", fallback: .mermaid) == .mermaid)
+    }
+}

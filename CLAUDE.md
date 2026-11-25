@@ -8,7 +8,8 @@ JavaScript and no web view. README.md has the feature list and milestones.
 
 - `App/`: app lifecycle, file type, tvOS gallery.
 - `Packages/DiagramKit/`: `DiagramCore` (no UI), `MermaidEngine`,
-  `StructurizrEngine` (placeholder), `EditorUI` (SwiftUI).
+  `StructurizrEngine` (DSL to C4 model to Mermaid C4 text, drawn by
+  `MermaidEngine`), `EditorUI` (SwiftUI).
 - `Vendor/MermaidKit/`: the renderer. Vendored and owned by us, see
   `Vendor/MermaidKit/VENDORED.md`. Log every change to it there.
 - `project.yml`: XcodeGen spec. The `.xcodeproj` and `App/Info.plist` are
@@ -25,6 +26,11 @@ JavaScript and no web view. README.md has the feature list and milestones.
   handled by the system. It is iOS 27.1 only: keep it behind `#if os(iOS)`
   and `#available`.
 - Toolbar items are `Label`s with a title and a symbol, never text-only.
+- `StructurizrEngine` never imports MermaidKit; it produces Mermaid source
+  and calls `MermaidDiagramEngine`. Unknown DSL is skipped with a note
+  diagnostic, never an error, so real-world workspaces still draw.
+- The language comes from the text (`DiagramFormat.detecting`), not the file
+  extension.
 - `DiagramCore` has no UI imports. Editing rules that can be tested without
   a text view belong there.
 - DiagramKit is in Swift 5 language mode for now.
@@ -38,7 +44,7 @@ toolchain is present, `swift build --target MermaidLayout` and its tests are
 the things that can run. If nothing can be compiled, say so in the PR rather
 than implying the change was built.
 
-Milestones 1 and 2 build for iOS, macOS, tvOS and visionOS (Xcode 27.1) and
+Milestones 1 to 3 build for iOS, macOS, tvOS and visionOS (Xcode 27.1) and
 have been run on the iPhone Duo simulator only. README.md "Build status"
 lists what has been exercised; keep it current. Run `swift test` in
 `Packages/DiagramKit` after any change there.

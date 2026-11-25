@@ -4,9 +4,25 @@ import Foundation
 /// How a diagram should be drawn.
 public struct RenderOptions: Hashable, Sendable {
     public var prefersDark: Bool
+    /// Which of the source's views to draw, by `DiagramViewInfo.id`. Nil, or
+    /// an id the source no longer has, means the first one.
+    public var view: String?
 
-    public init(prefersDark: Bool = false) {
+    public init(prefersDark: Bool = false, view: String? = nil) {
         self.prefersDark = prefersDark
+        self.view = view
+    }
+}
+
+/// One picture a source can produce. Mermaid sources have exactly one and
+/// report none; a Structurizr workspace has one per view it defines.
+public struct DiagramViewInfo: Identifiable, Hashable, Sendable {
+    public let id: String
+    public let name: String
+
+    public init(id: String, name: String) {
+        self.id = id
+        self.name = name
     }
 }
 
@@ -56,10 +72,18 @@ public protocol DiagramEngine: Sendable {
     /// Problems in `source`. Empty means it parsed cleanly.
     func diagnose(_ source: String) -> [Diagnostic]
 
+    /// The views `source` defines, in order. Empty when the language has no
+    /// notion of views, or the source has only the one.
+    func views(in source: String) -> [DiagramViewInfo]
+
     /// The drawn diagram, or nil when `source` cannot be rendered.
     func render(_ source: String, options: RenderOptions) -> RenderedDiagram?
 
     /// The diagram encoded as `kind`, or nil when it cannot be rendered or the
     /// engine does not support that kind.
     func export(_ source: String, as kind: ExportKind, options: RenderOptions) -> Data?
+}
+
+public extension DiagramEngine {
+    func views(in source: String) -> [DiagramViewInfo] { [] }
 }

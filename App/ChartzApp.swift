@@ -15,7 +15,10 @@ struct ChartzApp: App {
         DocumentGroup(newDocument: DiagramFile()) { file in
             DiagramEditorView(
                 source: file.$document.source,
-                engine: DiagramEngines.engine(for: file.document.format))
+                // The text decides the language; the file type is only the
+                // fallback for an empty document.
+                engine: DiagramEngines.engine(
+                    forSource: file.document.source, fallback: file.document.format))
         }
         #endif
     }
