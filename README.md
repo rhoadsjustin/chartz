@@ -5,7 +5,8 @@ Vision Pro and Apple TV. Diagrams are drawn by a native Swift renderer that we
 own: a vendored copy of [MermaidKit](https://github.com/2389-research/MermaidKit)
 (MIT) in `Vendor/MermaidKit`, with no JavaScript and no web view.
 
-Milestones 1 (skeleton), 2 (editor polish) and 3 (Structurizr DSL) are in. The app builds for all
+Milestones 1 (skeleton), 2 (editor polish), 3 (Structurizr DSL) and 4 (Apple
+TV presenter) are in. The app builds for all
 four destinations with Xcode 27.1 and has been run on the iPhone Duo simulator
 in every posture. See "Build status" below for what has and has not been
 exercised.
@@ -50,7 +51,37 @@ already in the repo, with tvOS added to its `Package.swift`; see
   have edited.
 - **Diagnostics** under the code pane, with line numbers.
 - **Export** to PNG, PDF and SVG.
-- **Apple TV**: a view-only gallery of the built-in samples.
+- **Apple TV presenter**: a list of your diagrams with a live preview that
+  follows the highlight; select one to present it full screen. Left and right
+  move between diagrams, up and down between the views of a Structurizr
+  workspace. Diagrams come from the app's iCloud folder once iCloud is set up
+  (see "iCloud and signing"); the built-in samples are always listed.
+
+## iCloud and signing
+
+Out of the box the app builds with a placeholder bundle id and no iCloud, and
+the Apple TV shows only the built-in samples. To sync your own diagrams:
+
+```sh
+cp Config/Signing.example.xcconfig Config/Signing.local.xcconfig
+# edit it: your team id and a bundle prefix you own
+scripts/bootstrap.sh
+```
+
+`Signing.local.xcconfig` is gitignored. It sets the development team, the
+bundle prefix (the app becomes `<prefix>.chartz`, its container
+`iCloud.<prefix>.chartz`) and turns on the iCloud Documents entitlement for
+iPhone, iPad, Vision Pro and Apple TV. Xcode's automatic signing registers the
+app id and container the first time you build for a device.
+
+With that in place, the app's container shows up as a **Chartz** folder in
+iCloud Drive, and new documents are saved there by default. Anything in that
+folder (subfolders included) appears on an Apple TV signed in to the same
+iCloud account, and updates when it is saved elsewhere.
+
+The Mac is not included: iCloud there needs App Sandbox, which is still open.
+Diagrams saved from a Mac reach the TV only if you put them in the Chartz
+folder in iCloud Drive by hand.
 
 ## Layout
 
@@ -64,6 +95,7 @@ Packages/DiagramKit/
   Sources/EditorUI/          Editor, code view, canvas, diagnostics, export
   Tests/                     DiagramCore, both engines, and a Mac editor smoke test
 Vendor/MermaidKit/           The renderer: our vendored copy, see VENDORED.md
+Config/                      Build settings; Signing.example.xcconfig for your team and iCloud
 project.yml                  XcodeGen spec; the .xcodeproj is generated
 scripts/bootstrap.sh
 ```
@@ -107,19 +139,30 @@ Last checked 24 Nov 2026 with Xcode 27.1.
 | --- | --- | --- |
 | iOS (iPhone Duo simulator) | yes | yes, closed, half open and open, both orientations, right-to-left and Reduce Transparency: editing, highlighting, line numbers, indent on Return, live render, diagnostics, templates, zoom, dark mode, autosave and reopen. Export was taken as far as the save sheet. |
 | macOS | yes | not launched. An off-screen test builds the editor and checks the text view, ruler, colouring and indent. |
-| tvOS simulator | yes | no tvOS runtime installed on the build Mac |
+| tvOS simulator | yes | not run: no tvOS runtime installed on the build Mac. The presenter and gallery are hosted off screen on the Mac by tests, which is not the same as running on a TV. |
 | visionOS simulator | yes | no visionOS runtime installed on the build Mac |
 
-`swift test` inside `Packages/DiagramKit` runs 45 tests: the syntax scanner
+`swift test` inside `Packages/DiagramKit` runs 55 tests: the syntax scanner
 and editing rules, format detection, every template through the real
 renderer, all three export formats, the Structurizr parser and view lowering
 (including every prefix of a workspace, as the editor sees while you type),
-and the Mac editor smoke test.
+the diagram library (scanning a folder) and presentation deck, and off-screen
+Mac smoke tests of the editor, the presenter and the gallery.
 
 Still open:
 
+- **iCloud sync has never run.** It needs a signed build with a real team
+  and container, and a device or simulator signed in to iCloud; none of that
+  exists on the build Mac. What is tested is the folder scanning, the deck,
+  and that an unsigned build falls back to samples. The tvOS APIs used
+  (`url(forUbiquityContainerIdentifier:)`, `NSMetadataQuery`,
+  `startDownloadingUbiquitousItem`) are declared available on tvOS in the
+  SDK headers; that they behave on a real Apple TV is unverified.
+- **The Siri Remote has never been tried**: focus movement in the list,
+  left/right/up/down in the presenter, and Menu to leave.
+
 - **Signing.** Mac builds sign to run locally. Device builds and TestFlight
-  need `DEVELOPMENT_TEAM` in `project.yml`.
+  need `Config/Signing.local.xcconfig`.
 - **Mac sandbox.** The Mac build is unsandboxed for now. Before TestFlight,
   add App Sandbox with user-selected file read/write.
 - **MermaidKit's own tests** have not been run against the vendored copy.
@@ -159,10 +202,13 @@ Gaps in MermaidKit that matter for architecture diagrams, in rough priority:
    canvas, templates, fold-aware layouts for the Duo's half-open pose. Done.
 3. Structurizr DSL subset: context and container views, lowered into the same
    renderer. Done.
-4. Apple TV presenter with iCloud sync.
+4. Apple TV presenter with iCloud sync. Built; sync and the TV itself are
+   unverified (see "Build status").
 5. Renderer gaps above: C4 boundaries first, then styling.
 
 ## Naming
 
-`com.example` is a placeholder bundle prefix. To change it, edit `project.yml`
-and the two `UTType` identifiers in `App/DiagramFile.swift`.
+`com.example` is a placeholder bundle prefix. Set your own in
+`Config/Signing.local.xcconfig`. The two `UTType` identifiers in
+`App/DiagramFile.swift` and `project.yml` still say `com.example.chartz`;
+change those by hand before shipping.

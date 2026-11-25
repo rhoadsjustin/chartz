@@ -1,0 +1,13 @@
+// Build settings shared by every configuration. project.yml points the app
+// target at this file.
+//
+// It builds as is, with a placeholder bundle id and no iCloud. To sign with
+// your own team and turn on iCloud sync, copy Signing.example.xcconfig to
+// Signing.local.xcconfig (gitignored) and fill it in.
+
+CHARTZ_BUNDLE_PREFIX = com.example
+PRODUCT_BUNDLE_IDENTIFIER = $(CHARTZ_BUNDLE_PREFIX).chartz
+
+// Optional: your team, bundle prefix and iCloud entitlements. Settings in
+// this file win because it is included last.
+#include? "Signing.local.xcconfig"

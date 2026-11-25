@@ -8,6 +8,7 @@ import SwiftUI
 public struct DiagramCanvasView: View {
     private let diagram: RenderedDiagram?
     private let isStale: Bool
+    private let allowsZoom: Bool
 
     #if !os(tvOS)
     @State private var zoom: CGFloat = 1
@@ -18,9 +19,12 @@ public struct DiagramCanvasView: View {
     ///   - diagram: The diagram to show, or nil for the empty state.
     ///   - isStale: Dim the diagram because the source no longer renders and
     ///     this is the last version that did.
-    public init(diagram: RenderedDiagram?, isStale: Bool = false) {
+    ///   - allowsZoom: Pan, pinch and the zoom buttons. Off for the presenter,
+    ///     which always fits the diagram to the screen.
+    public init(diagram: RenderedDiagram?, isStale: Bool = false, allowsZoom: Bool = true) {
         self.diagram = diagram
         self.isStale = isStale
+        self.allowsZoom = allowsZoom
     }
 
     public var body: some View {
@@ -40,10 +44,27 @@ public struct DiagramCanvasView: View {
     @ViewBuilder
     private func content(_ diagram: RenderedDiagram, in container: CGSize) -> some View {
         #if os(tvOS)
-        let fit = Self.fitScale(diagram.size, in: container)
-        drawing(diagram, scale: fit)
-            .frame(width: container.width, height: container.height)
+        fitted(diagram, in: container)
         #else
+        if allowsZoom {
+            zoomable(diagram, in: container)
+        } else {
+            fitted(diagram, in: container)
+        }
+        #endif
+    }
+
+    /// The whole diagram, as large as fits. Unlike the editor's preview this
+    /// scales small diagrams up: a presenter should fill the screen.
+    private func fitted(_ diagram: RenderedDiagram, in container: CGSize) -> some View {
+        let fit = Self.fitScale(diagram.size, in: container, maximum: 4)
+        return drawing(diagram, scale: fit)
+            .frame(width: container.width, height: container.height)
+    }
+
+    #if !os(tvOS)
+    @ViewBuilder
+    private func zoomable(_ diagram: RenderedDiagram, in container: CGSize) -> some View {
         // The zoom controls get their own strip, so a fitted diagram is never
         // hidden underneath them.
         let area = CGSize(
@@ -68,8 +89,8 @@ public struct DiagramCanvasView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             zoomControls.frame(maxWidth: .infinity, alignment: .trailing)
         }
-        #endif
     }
+    #endif
 
     /// Redraws the diagram at `scale`, so zooming never magnifies pixels.
     private func drawing(_ diagram: RenderedDiagram, scale: CGFloat) -> some View {
@@ -123,13 +144,14 @@ public struct DiagramCanvasView: View {
     /// A 44pt row of zoom buttons with 8pt above and below.
     private static let controlsHeight: CGFloat = 60
 
-    /// Scale that fits `size` inside `container` with a margin. Never scales up.
-    static func fitScale(_ size: CGSize, in container: CGSize) -> CGFloat {
+    /// Scale that fits `size` inside `container` with a margin, and never
+    /// more than `maximum`: 1 keeps a small diagram at its natural size.
+    static func fitScale(_ size: CGSize, in container: CGSize, maximum: CGFloat = 1) -> CGFloat {
         let available = CGSize(
             width: max(container.width - margin * 2, 1),
             height: max(container.height - margin * 2, 1))
         guard size.width > 0, size.height > 0 else { return 1 }
-        return min(1, available.width / size.width, available.height / size.height)
+        return min(maximum, available.width / size.width, available.height / size.height)
     }
 
     static func clamp(_ zoom: CGFloat) -> CGFloat {
