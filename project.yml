@@ -1,0 +1,103 @@
+# XcodeGen spec. Run scripts/bootstrap.sh (or `xcodegen generate`) to produce
+# Chartz.xcodeproj. com.example is a placeholder bundle prefix: change it
+# here, in App/DiagramFile.swift (the UTType identifiers) and nowhere else.
+name: Chartz
+
+options:
+  bundleIdPrefix: com.example
+  createIntermediateGroups: true
+  deploymentTarget:
+    iOS: "17.0"
+    macOS: "14.0"
+    tvOS: "17.0"
+    visionOS: "1.0"
+
+packages:
+  DiagramKit:
+    path: Packages/DiagramKit
+
+targets:
+  Chartz:
+    type: application
+    # One target, four destinations. iPhone (including the Duo) and iPad are
+    # both the iOS destination. No watchOS, by design.
+    supportedDestinations: [iOS, macOS, tvOS, visionOS]
+    sources:
+      - path: App
+        excludes:
+          - Info.plist
+    dependencies:
+      - package: DiagramKit
+        products:
+          - DiagramCore
+          - EditorUI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.chartz
+        PRODUCT_NAME: Chartz
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1,2,3,7"
+        # Mac builds sign to run locally, so no development team is needed
+        # until we ship. Set DEVELOPMENT_TEAM here for device builds.
+        "CODE_SIGN_IDENTITY[sdk=macosx*]": "-"
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Chartz
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        LSApplicationCategoryType: public.app-category.developer-tools
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        # Open and save files where they live (iCloud Drive, a repo checkout).
+        LSSupportsOpeningDocumentsInPlace: true
+        UISupportsDocumentBrowser: true
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Mermaid Diagram
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Owner
+            LSItemContentTypes:
+              - com.example.chartz.mermaid
+          - CFBundleTypeName: Structurizr DSL
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - com.example.chartz.structurizr
+          - CFBundleTypeName: Plain Text
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.plain-text
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: com.example.chartz.mermaid
+            UTTypeDescription: Mermaid Diagram
+            UTTypeConformsTo:
+              - public.plain-text
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - mmd
+                - mermaid
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: com.example.chartz.structurizr
+            UTTypeDescription: Structurizr DSL
+            UTTypeConformsTo:
+              - public.plain-text
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - dsl
+
+schemes:
+  Chartz:
+    build:
+      targets:
+        Chartz: all
+    run:
+      config: Debug
+    test:
+      config: Debug
