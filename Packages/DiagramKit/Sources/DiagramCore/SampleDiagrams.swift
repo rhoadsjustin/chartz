@@ -22,6 +22,7 @@ public enum SampleDiagrams {
 
     public static let all: [SampleDiagram] = [
         flowchart, sequence, classDiagram, state, entityRelationship, c4Context, c4Container,
+        structurizr,
     ]
 
     public static let flowchart = SampleDiagram(
@@ -115,5 +116,37 @@ public enum SampleDiagrams {
                 string name
                 string source
             }
+        """)
+
+    public static let structurizr = SampleDiagram(
+        name: "Structurizr Workspace",
+        format: .structurizr,
+        source: """
+        workspace "Diagram Editor" {
+            model {
+                dev = person "Developer" "Writes diagrams as code"
+                editor = softwareSystem "Diagram Editor" "Edits and renders Mermaid and C4" {
+                    ui = container "Editor UI" "Code pane, preview, diagnostics" "SwiftUI"
+                    core = container "Diagram Core" "Engine protocol and document model" "Swift"
+                    renderer = container "Renderer" "Parse, layout, draw" "Swift, CoreGraphics"
+                }
+                cloud = softwareSystem "iCloud Drive" "Stores diagram files" "External"
+
+                dev -> ui "Types source into"
+                ui -> core "Asks for a render"
+                core -> renderer "Delegates to"
+                core -> cloud "Reads and writes files" "CloudKit"
+            }
+            views {
+                systemContext editor "Context" {
+                    include *
+                    autoLayout
+                }
+                container editor "Containers" {
+                    include *
+                    autoLayout
+                }
+            }
+        }
         """)
 }

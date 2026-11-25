@@ -5,7 +5,7 @@ import PackageDescription
 //
 //   DiagramCore        Format, diagnostics and the DiagramEngine protocol. No UI.
 //   MermaidEngine      DiagramEngine backed by our MermaidKit fork (Vendor/MermaidKit).
-//   StructurizrEngine  Placeholder for the Structurizr DSL engine (milestone 3).
+//   StructurizrEngine  Structurizr DSL subset, lowered to Mermaid C4 for MermaidEngine to draw.
 //   EditorUI           SwiftUI editor, preview canvas, diagnostics list, export.
 //
 // Swift 5 language mode keeps milestone 1 free of strict-concurrency churn.
@@ -32,12 +32,14 @@ let package = Package(
                 .product(name: "MermaidLayout", package: "MermaidKit"),
                 .product(name: "MermaidRender", package: "MermaidKit"),
             ]),
-        .target(name: "StructurizrEngine", dependencies: ["DiagramCore"]),
+        .target(name: "StructurizrEngine", dependencies: ["DiagramCore", "MermaidEngine"]),
         .target(
             name: "EditorUI",
             dependencies: ["DiagramCore", "MermaidEngine", "StructurizrEngine"]),
         .testTarget(name: "DiagramCoreTests", dependencies: ["DiagramCore"]),
         .testTarget(name: "MermaidEngineTests", dependencies: ["DiagramCore", "MermaidEngine"]),
+        .testTarget(
+            name: "StructurizrEngineTests", dependencies: ["DiagramCore", "StructurizrEngine"]),
         .testTarget(name: "EditorUITests", dependencies: ["DiagramCore", "EditorUI"]),
     ],
     swiftLanguageModes: [.v5]

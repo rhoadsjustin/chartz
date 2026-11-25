@@ -21,7 +21,7 @@ public struct DiagramViewerView: View {
 
     public var body: some View {
         DiagramCanvasView(diagram: result.diagram)
-            .task(id: RenderKey(source: source, options: options)) {
+            .task(id: RenderKey(source: source, format: engine.format, options: options)) {
                 let fresh = await RenderPipeline.run(source: source, engine: engine, options: options)
                 guard !Task.isCancelled else { return }
                 result = fresh
