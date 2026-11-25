@@ -2,6 +2,9 @@
 *.xcodeproj
 App/Info.plist
 
+# Your team id and bundle prefix; see Config/Signing.example.xcconfig.
+Config/Signing.local.xcconfig
+
 .build/
 .swiftpm/
 DerivedData/

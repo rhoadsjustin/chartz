@@ -1,0 +1,16 @@
+// Copy to Signing.local.xcconfig, fill in, then run scripts/bootstrap.sh.
+// Signing.local.xcconfig is gitignored: it holds your team id.
+
+// Your 10-character Apple Developer team id.
+DEVELOPMENT_TEAM = ABCDE12345
+
+// Reverse-DNS prefix you own. The app's bundle id becomes <prefix>.chartz and
+// its iCloud container iCloud.<prefix>.chartz. Xcode's automatic signing
+// registers both the first time you build for a device.
+CHARTZ_BUNDLE_PREFIX = com.yourname
+
+// iCloud Documents, which is what puts diagrams on the Apple TV. iPhone,
+// iPad and Apple TV only: the Mac needs App Sandbox first (see README).
+CODE_SIGN_ENTITLEMENTS[sdk=iphone*] = App/Chartz.entitlements
+CODE_SIGN_ENTITLEMENTS[sdk=appletv*] = App/Chartz.entitlements
+CODE_SIGN_ENTITLEMENTS[sdk=xr*] = App/Chartz.entitlements

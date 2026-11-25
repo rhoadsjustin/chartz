@@ -12,6 +12,9 @@ JavaScript and no web view. README.md has the feature list and milestones.
   `MermaidEngine`), `EditorUI` (SwiftUI).
 - `Vendor/MermaidKit/`: the renderer. Vendored and owned by us, see
   `Vendor/MermaidKit/VENDORED.md`. Log every change to it there.
+- `Config/`: build settings. `Signing.local.xcconfig` (gitignored) holds the
+  user's team id and bundle prefix; never commit it or put a team id anywhere
+  else.
 - `project.yml`: XcodeGen spec. The `.xcodeproj` and `App/Info.plist` are
   generated and gitignored; never commit them.
 
@@ -19,7 +22,11 @@ JavaScript and no web view. README.md has the feature list and milestones.
 
 - Only `Packages/DiagramKit/Sources/MermaidEngine` may import MermaidKit
   modules. Everything else goes through the `DiagramEngine` protocol.
-- Apple TV is view-only. Guard editor code with `#if !os(tvOS)`.
+- Apple TV is view-only. Guard editor code with `#if !os(tvOS)`. The
+  presenter views are deliberately not tvOS-only, so the Mac tests can host
+  them.
+- The app must keep building and running with no team and no iCloud. iCloud
+  code treats "no container" as a normal state, not an error.
 - Layout decisions follow size class and the shape of the space. No device
   checks, no width breakpoints, no `UIScreen.main`.
 - Two-pane layouts on iOS go through `ArrangementView` so the Duo's fold is
@@ -44,8 +51,9 @@ toolchain is present, `swift build --target MermaidLayout` and its tests are
 the things that can run. If nothing can be compiled, say so in the PR rather
 than implying the change was built.
 
-Milestones 1 to 3 build for iOS, macOS, tvOS and visionOS (Xcode 27.1) and
-have been run on the iPhone Duo simulator only. README.md "Build status"
+Milestones 1 to 4 build for iOS, macOS, tvOS and visionOS (Xcode 27.1) and
+have been run on the iPhone Duo simulator only. The Apple TV presenter and
+iCloud sync have never run on a TV or against iCloud. README.md "Build status"
 lists what has been exercised; keep it current. Run `swift test` in
 `Packages/DiagramKit` after any change there.
 

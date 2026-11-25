@@ -1,6 +1,6 @@
 # XcodeGen spec. Run scripts/bootstrap.sh (or `xcodegen generate`) to produce
-# Chartz.xcodeproj. com.example is a placeholder bundle prefix: change it
-# here, in App/DiagramFile.swift (the UTType identifiers) and nowhere else.
+# Chartz.xcodeproj. The bundle id, signing team and iCloud entitlements come
+# from Config/Chartz.xcconfig; see Config/Signing.example.xcconfig.
 name: Chartz
 
 options:
@@ -26,6 +26,10 @@ targets:
       - path: App
         excludes:
           - Info.plist
+          - Chartz.entitlements
+    configFiles:
+      Debug: Config/Chartz.xcconfig
+      Release: Config/Chartz.xcconfig
     dependencies:
       - package: DiagramKit
         products:
@@ -33,12 +37,12 @@ targets:
           - EditorUI
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.chartz
         PRODUCT_NAME: Chartz
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1,2,3,7"
-        # Mac builds sign to run locally, so no development team is needed
-        # until we ship. Set DEVELOPMENT_TEAM here for device builds.
+        # Mac builds sign to run locally, so no development team is needed.
+        # This has to be here, not in the xcconfig: a target-level default
+        # would win over it.
         "CODE_SIGN_IDENTITY[sdk=macosx*]": "-"
     info:
       path: App/Info.plist
@@ -58,6 +62,15 @@ targets:
         # Open and save files where they live (iCloud Drive, a repo checkout).
         LSSupportsOpeningDocumentsInPlace: true
         UISupportsDocumentBrowser: true
+        # Shows the app's iCloud container as a "Chartz" folder in iCloud
+        # Drive. Inert unless the build is signed with Chartz.entitlements.
+        NSUbiquitousContainers:
+          # Info.plist keys are not expanded by Xcode, so bootstrap.sh passes
+          # the prefix to XcodeGen instead.
+          iCloud.${CHARTZ_BUNDLE_PREFIX}.chartz:
+            NSUbiquitousContainerIsDocumentScopePublic: true
+            NSUbiquitousContainerName: Chartz
+            NSUbiquitousContainerSupportedFolderLevels: Any
         CFBundleDocumentTypes:
           - CFBundleTypeName: Mermaid Diagram
             CFBundleTypeRole: Editor

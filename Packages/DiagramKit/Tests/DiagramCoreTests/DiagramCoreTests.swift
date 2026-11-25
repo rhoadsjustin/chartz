@@ -136,3 +136,104 @@ import Testing
         #expect(DiagramFormat.detecting("\n// only a comment\n", fallback: .mermaid) == .mermaid)
     }
 }
+
+@Suite struct DiagramLibraryTests {
+    private func makeFolder() throws -> URL {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("chartz-tests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: folder.appendingPathComponent("Team"), withIntermediateDirectories: true)
+        return folder
+    }
+
+    @Test func findsDiagramFilesInSubfoldersAndSortsByName() throws {
+        let folder = try makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try "flowchart TD\n A --> B".write(to: folder.appendingPathComponent("Diagram 10.mmd"), atomically: true, encoding: .utf8)
+        try "flowchart TD\n A --> B".write(to: folder.appendingPathComponent("Diagram 2.MERMAID"), atomically: true, encoding: .utf8)
+        try "workspace {\n}".write(to: folder.appendingPathComponent("Team/Bank.dsl"), atomically: true, encoding: .utf8)
+        try "notes".write(to: folder.appendingPathComponent("README.txt"), atomically: true, encoding: .utf8)
+        try "flowchart TD".write(to: folder.appendingPathComponent(".hidden.mmd"), atomically: true, encoding: .utf8)
+        try "   \n".write(to: folder.appendingPathComponent("Empty.mmd"), atomically: true, encoding: .utf8)
+        try Data([0xFF, 0xFE, 0xFD]).write(to: folder.appendingPathComponent("Binary.mmd"))
+
+        let items = DiagramLibrary.items(inDirectory: folder)
+        // Natural order: "Diagram 2" before "Diagram 10".
+        #expect(items.map(\.name) == ["Bank", "Diagram 2", "Diagram 10"])
+        #expect(items.map(\.format) == [.structurizr, .mermaid, .mermaid])
+        #expect(items.allSatisfy { $0.modified != nil })
+        #expect(Set(items.map(\.id)).count == 3)
+    }
+
+    @Test func theTextBeatsTheExtension() throws {
+        let folder = try makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("Mislabelled.mmd")
+        try "workspace {\n}".write(to: url, atomically: true, encoding: .utf8)
+        #expect(DiagramLibrary.item(at: url)?.format == .structurizr)
+    }
+
+    @Test func aMissingFolderIsJustEmpty() {
+        #expect(DiagramLibrary.items(inDirectory: URL(fileURLWithPath: "/nonexistent/chartz")).isEmpty)
+    }
+
+    @Test func samplesHaveStableDistinctIDs() {
+        let ids = DiagramLibrary.sampleItems.map(\.id)
+        #expect(Set(ids).count == SampleDiagrams.all.count)
+        #expect(ids.allSatisfy { $0.hasPrefix("sample:") })
+    }
+}
+
+@Suite struct PresentationDeckTests {
+    private func item(_ name: String) -> LibraryDiagram {
+        LibraryDiagram(id: name, name: name, format: .mermaid, source: "flowchart TD")
+    }
+
+    @Test func stepsWrapRoundInBothDirections() {
+        var deck = PresentationDeck(items: [item("a"), item("b"), item("c")])
+        deck.step(by: -1)
+        #expect(deck.current?.id == "c")
+        deck.step(by: 1)
+        #expect(deck.current?.id == "a")
+        #expect(deck.position == "1 of 3")
+    }
+
+    @Test func changingDiagramGoesBackToItsFirstView() {
+        var deck = PresentationDeck(items: [item("a"), item("b")])
+        deck.stepView(by: 1, count: 3)
+        deck.stepView(by: 5, count: 3)
+        #expect(deck.viewIndex == 2, "views stop at the end instead of wrapping")
+        deck.stepView(by: -9, count: 3)
+        #expect(deck.viewIndex == 0)
+        deck.stepView(by: 1, count: 3)
+        deck.step(by: 1)
+        #expect(deck.viewIndex == 0)
+        deck.stepView(by: 1, count: 3)
+        deck.select("b")
+        #expect(deck.viewIndex == 1, "selecting the diagram already showing keeps the view")
+        deck.stepView(by: 1, count: 0)
+        #expect(deck.viewIndex == 0)
+    }
+
+    @Test func aRefreshKeepsTheAudienceOnTheSameDiagram() {
+        var deck = PresentationDeck(items: [item("a"), item("b"), item("c")])
+        deck.select("c")
+        deck.replaceItems([item("new"), item("c"), item("a")])
+        #expect(deck.current?.id == "c")
+        // The diagram on screen was deleted elsewhere: stay in range.
+        deck.replaceItems([item("x")])
+        #expect(deck.current?.id == "x")
+        deck.replaceItems([])
+        #expect(deck.current == nil)
+        #expect(deck.position == nil)
+        deck.step(by: 1)
+        #expect(deck.current == nil)
+    }
+
+    @Test func selectingAnUnknownDiagramChangesNothing() {
+        var deck = PresentationDeck(items: [item("a"), item("b")])
+        deck.select("b")
+        deck.select("ghost")
+        #expect(deck.current?.id == "b")
+    }
+}

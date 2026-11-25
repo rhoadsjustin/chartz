@@ -66,3 +66,62 @@ import Testing
     }
 }
 #endif
+
+#if os(macOS)
+/// Hosts the presenter off screen. This is the only way it runs on the build
+/// Mac, which has no tvOS simulator; it is not a substitute for a TV.
+@MainActor
+@Suite struct PresenterSmokeTests {
+    private struct Harness: View {
+        @State var deck: PresentationDeck
+        var body: some View { PresenterView(deck: $deck) }
+    }
+
+    /// Draws the presenter into a bitmap and checks something was drawn.
+    /// Set CHARTZ_PRESENTER_SNAPSHOT to a path to keep the picture.
+    @Test func presenterDrawsTheCurrentDiagram() async throws {
+        let view = NSHostingView(rootView: Harness(deck: PresentationDeck(items: DiagramLibrary.sampleItems)))
+        view.frame = NSRect(x: 0, y: 0, width: 960, height: 540)
+        let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = view
+        view.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(700))
+        view.layoutSubtreeIfNeeded()
+
+        let rep = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+        view.cacheDisplay(in: view.bounds, to: rep)
+        // A blank presenter is one flat colour; a drawn one is not.
+        var colors = Set<String>()
+        for x in stride(from: 0, to: rep.pixelsWide, by: 16) {
+            for y in stride(from: 0, to: rep.pixelsHigh, by: 16) {
+                if let color = rep.colorAt(x: x, y: y) {
+                    colors.insert("\(Int(color.redComponent * 255)),\(Int(color.greenComponent * 255)),\(Int(color.blueComponent * 255))")
+                }
+            }
+        }
+        #expect(colors.count > 3, "the presenter drew a single flat colour")
+
+        if let path = ProcessInfo.processInfo.environment["CHARTZ_PRESENTER_SNAPSHOT"] {
+            try #require(rep.representation(using: .png, properties: [:])).write(to: URL(fileURLWithPath: path))
+        }
+    }
+
+    @Test func galleryBuildsAndFallsBackToSamplesWithoutICloud() async throws {
+        let view = NSHostingView(rootView: LibraryGalleryView())
+        view.frame = NSRect(x: 0, y: 0, width: 960, height: 540)
+        let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = view
+        view.layoutSubtreeIfNeeded()
+        // The test bundle has no iCloud entitlement, which is exactly the
+        // unsigned-build case: the model must settle on "unavailable".
+        let model = DiagramLibraryModel()
+        model.start()
+        for _ in 0..<40 where model.cloudState == .checking {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        #expect(model.cloudState == .unavailable)
+        #expect(model.cloudItems.isEmpty)
+        #expect(model.allItems == DiagramLibrary.sampleItems)
+    }
+}
+#endif
