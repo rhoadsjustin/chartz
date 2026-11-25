@@ -3,25 +3,26 @@ import DiagramCore
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The editor: source on one side, live preview on the other.
+/// The editor: source in one pane, live preview in the other.
 ///
-/// Layout follows the width it is given rather than the device, so one view
-/// covers a folded phone (tabs), an unfolded Duo, an iPad in Split View, a
-/// resized Mac window and a Vision Pro window (side by side).
+/// Layout follows the horizontal size class and the shape of the space, not
+/// the device. Compact width (iPhone, the Duo's outer display, a narrow iPad
+/// split) shows one pane at a time. Regular width shows both: side by side
+/// when the space is wider than tall, stacked when it is taller than wide, and
+/// either side of the fold when a Duo is partly open.
 public struct DiagramEditorView: View {
     @Binding private var source: String
     private let engine: any DiagramEngine
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var result = RenderResult()
     @State private var lastGood: RenderedDiagram?
     @State private var pane: Pane = .code
     @State private var exportFile: ExportedFile?
     @State private var isExporting = false
     @State private var exportFailed = false
-
-    /// Narrower than this, the panes become tabs.
-    private static let splitThreshold: CGFloat = 640
+    @State private var pendingTemplate: SampleDiagram?
 
     private enum Pane: String, CaseIterable, Identifiable {
         case code = "Code"
@@ -39,16 +40,25 @@ public struct DiagramEditorView: View {
         RenderOptions(prefersDark: colorScheme == .dark)
     }
 
+    private var templates: [SampleDiagram] {
+        SampleDiagrams.all.filter { $0.format == engine.format }
+    }
+
     public var body: some View {
-        GeometryReader { proxy in
-            if proxy.size.width >= Self.splitThreshold {
-                sideBySide(width: proxy.size.width)
+        Group {
+            if horizontalSizeClass == .compact {
+                onePane
             } else {
-                stacked
+                twoPanes
             }
         }
         .toolbar {
-            ToolbarItem(placement: .primaryAction) { exportMenu }
+            // Each item has a title and a symbol, so the system can pick the
+            // representation when the bar runs down the side of a Duo.
+            ToolbarItemGroup(placement: .primaryAction) {
+                if !templates.isEmpty { templateMenu }
+                exportMenu
+            }
         }
         .task(id: RenderKey(source: source, options: options)) {
             await refresh()
@@ -70,16 +80,50 @@ public struct DiagramEditorView: View {
 
     // MARK: - Layouts
 
-    private func sideBySide(width: CGFloat) -> some View {
-        HStack(spacing: 0) {
-            codePane
-                .frame(width: max(280, width * 0.42))
-            Divider()
-            previewPane
+    /// Both panes at once.
+    @ViewBuilder
+    private var twoPanes: some View {
+        // ArrangementView ships in the iOS 27.1 SDK only; the Mac, Vision Pro
+        // and older iOS get the same shape-driven split without fold handling.
+        #if os(iOS)
+        if #available(iOS 27.1, *) {
+            // The system picks the axis from the shape of the space and keeps
+            // both panes clear of the fold on a partly open Duo.
+            ArrangementView {
+                codePane
+            } secondary: {
+                previewPane
+            }
+            .arrangementViewStyle(.split)
+        } else {
+            shapeDrivenSplit
+        }
+        #else
+        shapeDrivenSplit
+        #endif
+    }
+
+    /// Side by side when wider than tall, stacked when taller than wide.
+    private var shapeDrivenSplit: some View {
+        GeometryReader { proxy in
+            if proxy.size.width >= proxy.size.height {
+                HStack(spacing: 0) {
+                    codePane.frame(width: proxy.size.width * 0.42)
+                    Divider()
+                    previewPane
+                }
+            } else {
+                VStack(spacing: 0) {
+                    previewPane
+                    Divider()
+                    codePane.frame(height: proxy.size.height * 0.42)
+                }
+            }
         }
     }
 
-    private var stacked: some View {
+    /// One pane at a time, for compact width.
+    private var onePane: some View {
         VStack(spacing: 0) {
             Picker("Pane", selection: $pane) {
                 ForEach(Pane.allCases) { pane in
@@ -99,7 +143,7 @@ public struct DiagramEditorView: View {
 
     private var codePane: some View {
         VStack(spacing: 0) {
-            CodeEditorView(text: $source)
+            CodeEditorView(text: $source, format: engine.format, diagnostics: result.diagnostics)
             Divider()
             DiagnosticsList(diagnostics: result.diagnostics)
         }
@@ -108,10 +152,18 @@ public struct DiagramEditorView: View {
     private var previewPane: some View {
         // While the source is broken mid-edit, keep the last good render on
         // screen (dimmed) instead of flashing an empty state on every keystroke.
-        DiagramCanvasView(
-            diagram: result.diagram ?? lastGood,
+        let diagram = result.diagram ?? lastGood
+        return DiagramCanvasView(
+            diagram: diagram,
             isStale: result.diagram == nil && lastGood != nil)
-            .background(Color(white: colorScheme == .dark ? 0.11 : 1))
+            .background(previewBackground(for: diagram))
+    }
+
+    private func previewBackground(for diagram: RenderedDiagram?) -> Color {
+        if let background = diagram?.background {
+            return Color(cgColor: background)
+        }
+        return Color(white: colorScheme == .dark ? 0.11 : 1)
     }
 
     // MARK: - Rendering
@@ -140,6 +192,46 @@ public struct DiagramEditorView: View {
         .disabled(result.diagram == nil)
     }
 
+    private var templateMenu: some View {
+        Menu {
+            ForEach(templates) { template in
+                Button(template.name) { apply(template) }
+            }
+        } label: {
+            Label("Templates", systemImage: "square.on.square.dashed")
+        }
+        // Attached here so the dialog points at the button that raised it.
+        .confirmationDialog(
+            "Replace the current diagram?",
+            isPresented: Binding(
+                get: { pendingTemplate != nil },
+                set: { if !$0 { pendingTemplate = nil } }),
+            titleVisibility: .visible,
+            presenting: pendingTemplate
+        ) { template in
+            Button("Replace with \(template.name)", role: .destructive) {
+                source = template.source
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("The source you have now will be replaced by the template.")
+        }
+    }
+
+    /// Replaces the source with `template`, asking first if that would throw
+    /// away something the user wrote.
+    private func apply(_ template: SampleDiagram) {
+        let current = source.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isUntouched = current.isEmpty || SampleDiagrams.all.contains {
+            $0.source.trimmingCharacters(in: .whitespacesAndNewlines) == current
+        }
+        if isUntouched {
+            source = template.source
+        } else {
+            pendingTemplate = template
+        }
+    }
+
     private func export(_ kind: ExportKind) {
         guard let data = engine.export(source, as: kind, options: options) else {
             exportFailed = true
@@ -151,22 +243,6 @@ public struct DiagramEditorView: View {
 }
 
 // MARK: - Pieces
-
-/// Plain monospaced text editing. Milestone 2 swaps this for a
-/// TextKit-backed editor with syntax highlighting and line numbers.
-struct CodeEditorView: View {
-    @Binding var text: String
-
-    var body: some View {
-        TextEditor(text: $text)
-            .font(.system(.body, design: .monospaced))
-            .autocorrectionDisabled()
-            #if os(iOS) || os(visionOS)
-            .textInputAutocapitalization(.never)
-            .keyboardType(.asciiCapable)
-            #endif
-    }
-}
 
 struct DiagnosticsList: View {
     let diagnostics: [Diagnostic]

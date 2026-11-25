@@ -17,7 +17,12 @@ out; delete or fix those tests as they come up.
 
 ## Changes from upstream
 
-- `Package.swift`: added `.tvOS(.v17)` to `platforms`. Not yet built on tvOS.
+- `Package.swift`: added `.tvOS(.v17)` to `platforms`. Builds for the tvOS
+  simulator; not yet run there.
+- `Sources/MermaidRender/MermaidRenderer+Vector.swift` (new file): public
+  `VectorDiagram` and `MermaidRenderer.vectorDiagram(source:theme:spacing:)`.
+  Exposes the internal layout-and-draw plan the raster and PDF paths already
+  share, so the app can redraw at any zoom level. No upstream file was edited.
 
 Add a line here for every change, so pulling in an upstream fix later is a
 matter of reading this list.

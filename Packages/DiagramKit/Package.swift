@@ -20,7 +20,7 @@ let package = Package(
         .library(name: "EditorUI", targets: ["EditorUI"]),
     ],
     dependencies: [
-        // Our fork, checked out by scripts/bootstrap.sh.
+        // Our vendored copy of the renderer.
         .package(path: "../../Vendor/MermaidKit"),
     ],
     targets: [
@@ -37,6 +37,8 @@ let package = Package(
             name: "EditorUI",
             dependencies: ["DiagramCore", "MermaidEngine", "StructurizrEngine"]),
         .testTarget(name: "DiagramCoreTests", dependencies: ["DiagramCore"]),
+        .testTarget(name: "MermaidEngineTests", dependencies: ["DiagramCore", "MermaidEngine"]),
+        .testTarget(name: "EditorUITests", dependencies: ["DiagramCore", "EditorUI"]),
     ],
     swiftLanguageModes: [.v5]
 )

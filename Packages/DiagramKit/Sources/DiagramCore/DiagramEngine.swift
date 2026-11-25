@@ -10,24 +10,30 @@ public struct RenderOptions: Hashable, Sendable {
     }
 }
 
-/// A rasterised diagram. `CGImage` keeps this type usable on every Apple
-/// platform without importing UIKit or AppKit.
+/// A laid-out diagram, ready to draw at any scale.
 ///
-/// Milestone 2 replaces this with a vector scene drawn in a SwiftUI `Canvas`,
-/// so zooming stays sharp and nodes become hit-testable.
+/// It is a drawing, not a bitmap: the preview redraws it at the current zoom
+/// level, so lines and text stay sharp however far in you go. Only
+/// CoreGraphics types appear here, so this stays usable on every Apple
+/// platform without importing UIKit or AppKit.
 public struct RenderedDiagram: @unchecked Sendable {
-    public let image: CGImage
-    /// Pixels per point.
-    public let scale: CGFloat
+    /// Natural size in points.
+    public let size: CGSize
+    /// The colour the diagram expects behind it, or nil for "whatever is there".
+    public let background: CGColor?
+    private let drawing: (CGContext) -> Void
 
-    public init(image: CGImage, scale: CGFloat) {
-        self.image = image
-        self.scale = scale > 0 ? scale : 1
+    /// - Parameter draw: Draws the diagram with its top-left corner at the
+    ///   origin of a y-down context. It must not fill the background, and must
+    ///   be safe to call repeatedly.
+    public init(size: CGSize, background: CGColor? = nil, draw: @escaping (CGContext) -> Void) {
+        self.size = size
+        self.background = background
+        self.drawing = draw
     }
 
-    /// Natural size in points.
-    public var size: CGSize {
-        CGSize(width: CGFloat(image.width) / scale, height: CGFloat(image.height) / scale)
+    public func draw(in context: CGContext) {
+        drawing(context)
     }
 }
 

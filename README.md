@@ -5,10 +5,10 @@ Vision Pro and Apple TV. Diagrams are drawn by a native Swift renderer that we
 own: a vendored copy of [MermaidKit](https://github.com/2389-research/MermaidKit)
 (MIT) in `Vendor/MermaidKit`, with no JavaScript and no web view.
 
-This is **milestone 1**: the multiplatform skeleton. It has not been compiled
-yet. It was written on a machine without Xcode, against MermaidKit's source at
-commit `8556a1b` (30 Oct 2026). Expect to fix a few compiler errors on first
-build; see "First build" below for where they are most likely.
+Milestones 1 (skeleton) and 2 (editor polish) are in. The app builds for all
+four destinations with Xcode 27.1 and has been run on the iPhone Duo simulator
+in every posture. See "Build status" below for what has and has not been
+exercised.
 
 ## Setup
 
@@ -24,34 +24,40 @@ open Chartz.xcodeproj
 already in the repo, with tvOS added to its `Package.swift`; see
 `Vendor/MermaidKit/VENDORED.md` for what was kept and changed.
 
-## What milestone 1 does
+## What it does
 
 - **One app target, four destinations**: iOS, macOS, visionOS, tvOS.
 - **Document-based** on iPhone, iPad, Mac and Vision Pro. Files are plain text
   (`.mmd`, `.mermaid`, `.dsl`), opened in place, so they work from iCloud Drive
   or a repo checkout.
-- **Editor**: code pane and live preview. Side by side when the view is 640pt
-  or wider, tabs when narrower. It follows the width it is given, so it adapts
-  to a folded or unfolded Duo, iPad Split View and Mac window resizing without
-  device checks.
+- **Code editor** on TextKit: syntax colouring, line numbers, Return keeps the
+  current indent, and smart dashes and quotes are off so `-->` stays `-->`.
+  Lines with a diagnostic get a coloured line number.
+- **Vector preview.** The diagram is redrawn at the current zoom level, so it
+  stays sharp. Pinch or use the buttons; zoom holds the centre.
+- **Layout by size class and shape.** Compact width shows one pane with a
+  Code/Preview switch. Regular width shows both: side by side when wider than
+  tall, stacked when taller than wide. On a partly open Duo the panes sit
+  either side of the fold.
 - **Live render** 200ms after you stop typing, off the main thread. While the
   source is broken mid-edit the last good render stays on screen, dimmed.
+- **Templates** menu with seven starters. It asks before replacing source you
+  have edited.
 - **Diagnostics** under the code pane, with line numbers.
-- **Pan and zoom** in the preview (pinch, or the corner buttons).
 - **Export** to PNG, PDF and SVG.
-- **Apple TV**: a view-only gallery of the built-in samples, to prove the
-  renderer runs there.
+- **Apple TV**: a view-only gallery of the built-in samples.
 
 ## Layout
 
 ```
 App/                         App lifecycle, file type, tvOS gallery
 Packages/DiagramKit/
-  Sources/DiagramCore/       Format, Diagnostic, DiagramEngine protocol, samples
+  Sources/DiagramCore/       Format, Diagnostic, DiagramEngine protocol, samples,
+                             syntax scanner and editing rules (no UI)
   Sources/MermaidEngine/     The only code that calls MermaidKit
   Sources/StructurizrEngine/ Placeholder until milestone 3
-  Sources/EditorUI/          Editor, canvas, diagnostics, export
-  Tests/DiagramCoreTests/
+  Sources/EditorUI/          Editor, code view, canvas, diagnostics, export
+  Tests/                     DiagramCore, MermaidEngine, and a Mac editor smoke test
 Vendor/MermaidKit/           The renderer: our vendored copy, see VENDORED.md
 project.yml                  XcodeGen spec; the .xcodeproj is generated
 scripts/bootstrap.sh
@@ -60,23 +66,37 @@ scripts/bootstrap.sh
 Everything outside `MermaidEngine` talks to the `DiagramEngine` protocol, so
 changes inside the renderer never ripple into the UI.
 
-## First build: where to look if it fails
+## Build status
 
-1. **tvOS in MermaidKit.** Upstream declares macOS, iOS, Mac Catalyst and
-   visionOS only. Its renderer is CoreGraphics and UIKit, so tvOS should
-   compile now that the platform is declared, but nobody has tried. Build the
-   tvOS destination early; fixes go in `Vendor/MermaidKit`.
-2. **`MermaidEngine/MermaidDiagramEngine.swift`.** It calls
-   `MermaidParser.diagnose`, `MermaidRenderer.image`, `.pngData`, `.pdfData`
-   and `.svg`. Signatures were read from the source, not compiled against it.
-3. **`project.yml`.** If XcodeGen rejects it, the fallback is Xcode's
-   "Multiplatform App" template: add `Packages/DiagramKit` as a local package,
-   drop in the three files from `App/`, and copy the document and type
-   declarations from `project.yml` into the target's Info tab.
-4. **Mac sandbox.** The Mac build is unsandboxed for now. Before TestFlight,
-   add App Sandbox with user-selected file read/write.
+Last checked 24 Nov 2026 with Xcode 27.1.
 
-Unit tests for `DiagramCore` run with `swift test` inside `Packages/DiagramKit`.
+| Destination | Builds | Run |
+| --- | --- | --- |
+| iOS (iPhone Duo simulator) | yes | yes, closed, half open and open, both orientations, right-to-left and Reduce Transparency: editing, highlighting, line numbers, indent on Return, live render, diagnostics, templates, zoom, dark mode, autosave and reopen. Export was taken as far as the save sheet. |
+| macOS | yes | not launched. An off-screen test builds the editor and checks the text view, ruler, colouring and indent. |
+| tvOS simulator | yes | no tvOS runtime installed on the build Mac |
+| visionOS simulator | yes | no visionOS runtime installed on the build Mac |
+
+`swift test` inside `Packages/DiagramKit` runs 21 tests: the syntax scanner
+and editing rules, every template through the real renderer, all three export
+formats, and the Mac editor smoke test.
+
+Still open:
+
+- **Signing.** Mac builds sign to run locally. Device builds and TestFlight
+  need `DEVELOPMENT_TEAM` in `project.yml`.
+- **Mac sandbox.** The Mac build is unsandboxed for now. Before TestFlight,
+  add App Sandbox with user-selected file read/write.
+- **MermaidKit's own tests** have not been run against the vendored copy.
+- **Fold handling is iOS only.** `ArrangementView` is in the iOS 27.1 SDK but
+  not in the macOS, visionOS or tvOS 27.0 SDKs that ship with Xcode 27.1.
+- **Folding or unfolding rebuilds the code view**, so the caret, scroll
+  position and text-view undo stack are lost. The text is kept.
+- **Not tried**: iPad, hardware keyboard, Dynamic Type sizes, very long
+  documents, Split View beside another app, Picture in Picture.
+- **Outer display in landscape with the keyboard up** leaves about five
+  lines of code visible. It works; it is cramped.
+- `duo-notes.md` records the iPhone Duo design pass and what is left of it.
 
 ## Renderer work we now own
 
@@ -87,14 +107,12 @@ Gaps in MermaidKit that matter for architecture diagrams, in rough priority:
 - **Styling is ignored**: `classDef`, `style`, `linkStyle`, `%%{init}`.
 - **No hit-testing.** The platform-free `RenderScene` has geometry but no link
   back to source lines; tap-a-node-to-jump needs that.
-- **Raster preview.** The preview is an image, so deep zoom gets soft. Drawing
-  `RenderScene` in a SwiftUI `Canvas` fixes that and enables hit-testing.
 
 ## Milestones
 
-1. Skeleton (this).
+1. Skeleton. Done.
 2. Editor polish: TextKit editor with highlighting and line numbers, vector
-   canvas, templates, fold-aware layouts for the Duo's half-open pose.
+   canvas, templates, fold-aware layouts for the Duo's half-open pose. Done.
 3. Structurizr DSL subset: context and container views, lowered into the same
    renderer.
 4. Apple TV presenter with iCloud sync.

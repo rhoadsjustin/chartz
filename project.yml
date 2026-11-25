@@ -37,6 +37,9 @@ targets:
         PRODUCT_NAME: Chartz
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1,2,3,7"
+        # Mac builds sign to run locally, so no development team is needed
+        # until we ship. Set DEVELOPMENT_TEAM here for device builds.
+        "CODE_SIGN_IDENTITY[sdk=macosx*]": "-"
     info:
       path: App/Info.plist
       properties:

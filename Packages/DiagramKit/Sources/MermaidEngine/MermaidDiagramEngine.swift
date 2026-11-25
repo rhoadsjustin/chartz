@@ -4,12 +4,6 @@ import Foundation
 import MermaidLayout
 import MermaidRender
 
-#if canImport(UIKit)
-import UIKit
-#elseif canImport(AppKit)
-import AppKit
-#endif
-
 /// `DiagramEngine` backed by our MermaidKit fork.
 ///
 /// This file is the only place the app touches MermaidKit's API. Everything
@@ -29,22 +23,11 @@ public struct MermaidDiagramEngine: DiagramEngine {
     }
 
     public func render(_ source: String, options: RenderOptions) -> RenderedDiagram? {
-        guard let image = MermaidRenderer.image(source: source, theme: theme(for: options)) else {
-            return nil
+        guard let vector = MermaidRenderer.vectorDiagram(source: source, theme: theme(for: options))
+        else { return nil }
+        return RenderedDiagram(size: vector.size, background: vector.canvasColor) { context in
+            vector.draw(in: context)
         }
-        #if canImport(UIKit)
-        guard let cgImage = image.cgImage else { return nil }
-        return RenderedDiagram(image: cgImage, scale: image.scale)
-        #elseif canImport(AppKit)
-        guard image.size.width > 0 else { return nil }
-        var rect = CGRect(origin: .zero, size: image.size)
-        guard let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) else {
-            return nil
-        }
-        return RenderedDiagram(image: cgImage, scale: CGFloat(cgImage.width) / image.size.width)
-        #else
-        return nil
-        #endif
     }
 
     public func export(_ source: String, as kind: ExportKind, options: RenderOptions) -> Data? {

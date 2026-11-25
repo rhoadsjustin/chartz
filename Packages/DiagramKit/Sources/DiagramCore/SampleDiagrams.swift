@@ -20,7 +20,9 @@ public enum SampleDiagrams {
     /// What a brand-new document starts with.
     public static let starter = flowchart.source
 
-    public static let all: [SampleDiagram] = [flowchart, sequence, c4Context, c4Container]
+    public static let all: [SampleDiagram] = [
+        flowchart, sequence, classDiagram, state, entityRelationship, c4Context, c4Container,
+    ]
 
     public static let flowchart = SampleDiagram(
         name: "Flowchart",
@@ -73,5 +75,45 @@ public enum SampleDiagrams {
             Rel(dev, ui, "Types source into")
             Rel(ui, core, "Asks for a render")
             Rel(core, render, "Delegates to")
+        """)
+
+    public static let classDiagram = SampleDiagram(
+        name: "Class",
+        format: .mermaid,
+        source: """
+        classDiagram
+            class DiagramEngine {
+                +diagnose(source) Diagnostic[]
+                +render(source) RenderedDiagram
+            }
+            class MermaidEngine
+            class StructurizrEngine
+            DiagramEngine <|-- MermaidEngine
+            DiagramEngine <|-- StructurizrEngine
+        """)
+
+    public static let state = SampleDiagram(
+        name: "State",
+        format: .mermaid,
+        source: """
+        stateDiagram-v2
+            [*] --> Editing
+            Editing --> Rendering: pause typing
+            Rendering --> Editing: drawn
+            Rendering --> Broken: parse error
+            Broken --> Editing: keep typing
+        """)
+
+    public static let entityRelationship = SampleDiagram(
+        name: "Entity Relationship",
+        format: .mermaid,
+        source: """
+        erDiagram
+            WORKSPACE ||--o{ DIAGRAM : contains
+            DIAGRAM ||--o{ EXPORT : produces
+            DIAGRAM {
+                string name
+                string source
+            }
         """)
 }
