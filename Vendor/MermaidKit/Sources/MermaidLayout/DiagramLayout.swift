@@ -87,6 +87,8 @@ public struct FlowchartLayout: Sendable {
     public let size: CGSize
     public let nodes: [PlacedNode]
     public let edges: [PlacedEdge]
+    /// Per-node styling from the source, by node id. (Chartz addition.)
+    public var nodeStyles: [String: Flowchart.NodeStyle] = [:]
     /// Subgraph boxes, outermost first; empty for a flat chart.
     public let containers: [Container]
 

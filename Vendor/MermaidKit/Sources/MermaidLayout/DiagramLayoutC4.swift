@@ -41,10 +41,34 @@ public struct C4Layout: Sendable {
         public var to: CGPoint { points.last ?? .zero }
     }
 
+    /// The frame of a boundary (or deployment node): a dashed rectangle round
+    /// the boxes declared inside it, captioned in its bottom-left corner.
+    /// (Chartz addition.)
+    public struct Frame: Sendable {
+        public let rect: CGRect
+        /// e.g. "Internet Banking  «System Boundary»".
+        public let caption: String
+        /// Where the caption is centred; it is laid out left-aligned inside
+        /// the frame, but both renderers place text by its centre.
+        public let captionCenter: CGPoint
+        /// 0 for an outermost frame, 1 for one nested inside it, and so on.
+        public let depth: Int
+    }
+
     public let size: CGSize
     public let title: String?
     public let boxes: [Box]
     public let edges: [Edge]
+    /// Outermost first, so drawing in order puts inner frames on top.
+    public let frames: [Frame]
+
+    public init(size: CGSize, title: String?, boxes: [Box], edges: [Edge], frames: [Frame] = []) {
+        self.size = size
+        self.title = title
+        self.boxes = boxes
+        self.edges = edges
+        self.frames = frames
+    }
 }
 
 extension DiagramLayoutEngine {
@@ -227,10 +251,116 @@ extension DiagramLayoutEngine {
         }
         if visualRows.isEmpty { visualRows = [Array(0..<n)] }
 
-        let widestCols = visualRows.map(\.count).max() ?? 1
+        // ── Boundaries (Chartz addition) ────────────────────────────────────
+        // A frame can only be drawn if its boxes sit together with nothing
+        // else among them. Rows are relationship layers, so that does not
+        // happen by itself. Each outermost boundary therefore gets a "block":
+        // a fixed span of columns it owns in every row it reaches. Boxes
+        // outside any boundary go to the left or right of the blocks in those
+        // rows. With no boundaries none of this runs and the layout is
+        // exactly what it was.
+        let boundaryParent = Dictionary(diagram.boundaries.map { ($0.alias, $0.parent) },
+                                        uniquingKeysWith: { a, _ in a })
+        // Innermost-to-outermost chain of boundary aliases for an element.
+        func chain(_ index: Int) -> [String] {
+            var result: [String] = []
+            var current = diagram.elements[index].boundary
+            while let alias = current, boundaryParent[alias] != nil, !result.contains(alias) {
+                result.append(alias)
+                current = boundaryParent[alias] ?? nil
+            }
+            return result
+        }
+        let chains = (0..<n).map(chain)
+        // Outermost boundaries that hold something, in order of first use.
+        var blocks: [String] = []
+        for index in 0..<n {
+            if let top = chains[index].last, !blocks.contains(top) { blocks.append(top) }
+        }
+        let framePadX: CGFloat = 16
+
+        struct BlockPlan {
+            var firstRow = Int.max
+            var lastRow = Int.min
+            var columns = 1
+            /// How many frames nest inside this one at the deepest point.
+            var nesting = 0
+            var minX: CGFloat = 0
+            var width: CGFloat = 0
+        }
+        var blockPlans = [String: BlockPlan]()
+        for (rowIndex, row) in visualRows.enumerated() {
+            for block in blocks {
+                let members = row.filter { chains[$0].last == block }
+                guard !members.isEmpty else { continue }
+                var plan = blockPlans[block] ?? BlockPlan()
+                plan.firstRow = min(plan.firstRow, rowIndex)
+                plan.lastRow = max(plan.lastRow, rowIndex)
+                plan.columns = max(plan.columns, members.count)
+                plan.nesting = max(plan.nesting, (members.map { chains[$0].count }.max() ?? 1) - 1)
+                blockPlans[block] = plan
+            }
+        }
+        /// Rows a block spans keep to the block columns; the rest centre freely.
+        func isConstrained(_ rowIndex: Int) -> Bool {
+            blockPlans.values.contains { $0.firstRow <= rowIndex && rowIndex <= $0.lastRow }
+        }
+        // In a constrained row, outsiders split to either side of the blocks.
+        func outsiders(_ row: [Int]) -> (left: [Int], right: [Int]) {
+            let free = row.filter { chains[$0].isEmpty }
+            let leftCount = free.count / 2
+            return (Array(free.prefix(leftCount)), Array(free.dropFirst(leftCount)))
+        }
+        func span(_ columns: Int) -> CGFloat {
+            columns <= 0 ? 0 : CGFloat(columns) * boxWidth + CGFloat(columns - 1) * hGap
+        }
+        var leftColumns = 0, rightColumns = 0
+        for (rowIndex, row) in visualRows.enumerated() where isConstrained(rowIndex) {
+            let sides = outsiders(row)
+            leftColumns = max(leftColumns, sides.left.count)
+            rightColumns = max(rightColumns, sides.right.count)
+        }
+        // Block geometry, relative to the start of the content strip.
+        var contentWidth: CGFloat = leftColumns > 0 ? span(leftColumns) + hGap : 0
+        for block in blocks {
+            guard var plan = blockPlans[block] else { continue }
+            // Each level of nesting needs its own margin inside the frame.
+            plan.width = span(plan.columns) + 2 * (framePadX + CGFloat(plan.nesting) * 10)
+            plan.minX = contentWidth
+            contentWidth += plan.width + hGap
+            blockPlans[block] = plan
+        }
+        if !blocks.isEmpty { contentWidth -= hGap }
+        if rightColumns > 0 { contentWidth += hGap + span(rightColumns) }
+
+        let widestCols = visualRows.enumerated()
+            .filter { !isConstrained($0.offset) }.map(\.element.count).max() ?? 1
         let canvasWidth = max(220,
             margin * 2 + CGFloat(widestCols) * boxWidth + CGFloat(widestCols - 1) * hGap,
+            blocks.isEmpty ? 0 : margin * 2 + contentWidth,
             diagram.title.map { measure($0, titleFontSize).width + margin * 2 } ?? 0)
+        let contentOrigin = (canvasWidth - contentWidth) / 2
+
+        // Extra room above the first and below the last row of a block, for
+        // the frame line and its caption, so neither lands on the arrow labels
+        // that live in the middle of each channel.
+        let captionHeight = grown(14, fontSize: 10.5, measure)
+        func frameTopPad(_ nesting: Int) -> CGFloat { 18 + CGFloat(nesting) * 8 }
+        func frameBottomPad(_ nesting: Int) -> CGFloat { 10 + (captionHeight + 4) * CGFloat(nesting + 1) }
+        var extraAbove = [CGFloat](repeating: 0, count: visualRows.count)
+        var extraBelow = [CGFloat](repeating: 0, count: visualRows.count)
+        // Every boundary, nested ones included: a nested frame can end in the
+        // middle of its parent's rows and needs the room there too.
+        for boundary in diagram.boundaries {
+            let rows = visualRows.indices.filter { rowIndex in
+                visualRows[rowIndex].contains { chains[$0].contains(boundary.alias) }
+            }
+            guard let firstRow = rows.first, let lastRow = rows.last else { continue }
+            let below = visualRows.joined()
+                .compactMap { chains[$0].firstIndex(of: boundary.alias) }.max() ?? 0
+            extraAbove[firstRow] = max(extraAbove[firstRow], CGFloat(below) * 8)
+            extraBelow[lastRow] = max(extraBelow[lastRow], frameBottomPad(below) - 8)
+        }
 
         // Place boxes row by row, each row centered horizontally, top-aligned
         // within the row's tallest box. Record each element's visual row so the
@@ -238,18 +368,45 @@ extension DiagramLayoutEngine {
         var frames = [CGRect](repeating: .zero, count: n)
         var rowOf = [Int](repeating: 0, count: n)
         var y = margin + titleHeight + 12       // +12: headroom for people in row 0
+        var lastExtraBelow: CGFloat = 0
         for (rowIndex, row) in visualRows.enumerated() {
+            y += extraAbove[rowIndex]
             let rowHeight = row.map { contents[$0].height }.max() ?? 0
-            let rowWidth = CGFloat(row.count) * boxWidth + CGFloat(row.count - 1) * hGap
-            var x = (canvasWidth - rowWidth) / 2
-            for idx in row {
-                frames[idx] = CGRect(x: x, y: y, width: boxWidth, height: contents[idx].height)
-                rowOf[idx] = rowIndex
-                x += boxWidth + hGap
+            func place(_ indices: [Int], from start: CGFloat) {
+                var x = start
+                for idx in indices {
+                    frames[idx] = CGRect(x: x, y: y, width: boxWidth, height: contents[idx].height)
+                    rowOf[idx] = rowIndex
+                    x += boxWidth + hGap
+                }
             }
-            y += rowHeight + vGap
+            if isConstrained(rowIndex) {
+                let sides = outsiders(row)
+                // Left outsiders hug the blocks; right ones start after them.
+                let leftZone = leftColumns > 0 ? span(leftColumns) + hGap : 0
+                place(sides.left, from: contentOrigin + leftZone - hGap - span(sides.left.count))
+                place(sides.right, from: contentOrigin + contentWidth - span(rightColumns))
+                for block in blocks {
+                    guard let plan = blockPlans[block] else { continue }
+                    // Keep nested groups together inside the block.
+                    let members = row.filter { chains[$0].last == block }
+                        .enumerated()
+                        .sorted { a, b in
+                            let ka = chains[a.element].reversed().joined(separator: "/")
+                            let kb = chains[b.element].reversed().joined(separator: "/")
+                            return ka == kb ? a.offset < b.offset : ka < kb
+                        }
+                        .map(\.element)
+                    place(members, from: contentOrigin + plan.minX + (plan.width - span(members.count)) / 2)
+                }
+            } else {
+                place(row, from: (canvasWidth - span(row.count)) / 2)
+            }
+            lastExtraBelow = extraBelow[rowIndex]
+            y += rowHeight + vGap + extraBelow[rowIndex]
         }
-        let canvasHeight = y - vGap + margin
+        let canvasHeight = y - vGap + margin - lastExtraBelow
+            + (lastExtraBelow > 0 ? lastExtraBelow + 8 : 0)
 
         // A validated route (see below) for every relation whose endpoints
         // exist and differ, computed against the *pre-shift* frames.
@@ -416,6 +573,65 @@ extension DiagramLayoutEngine {
             }
         }
 
+        // Boundary frames, from the final box positions. A frame is the
+        // bounding box of its members plus padding. If that box would also
+        // take in a box that is not a member (possible for a nested boundary
+        // whose members straddle rows), the frame is left out rather than
+        // drawn round the wrong things.
+        var boundaryFrames: [C4Layout.Frame] = []
+        for boundary in diagram.boundaries {
+            let members = (0..<n).filter { chains[$0].contains(boundary.alias) }
+            guard let first = members.first else { continue }
+            // Depth from the outside in; how much nests beneath this frame.
+            var depth = 0
+            var up = boundary.parent
+            while let alias = up, depth < 16 { depth += 1; up = boundaryParent[alias] ?? nil }
+            let below = (members.map { chains[$0].firstIndex(of: boundary.alias) ?? 0 }.max() ?? 0)
+            var box = members.dropFirst().reduce(frames[first]) { $0.union(frames[$1]) }
+            let padX = framePadX + CGFloat(below) * 10 - 6
+            box = CGRect(x: box.minX - padX, y: box.minY - frameTopPad(below),
+                         width: box.width + padX * 2,
+                         height: box.height + frameTopPad(below) + frameBottomPad(below))
+            // Grow outward to the 4pt grid the box families align to, so a
+            // frame never makes the layout less grid-aligned than it was.
+            let grid: CGFloat = 4
+            let snappedMinX = (box.minX / grid).rounded(.down) * grid
+            let snappedMinY = (box.minY / grid).rounded(.down) * grid
+            box = CGRect(x: snappedMinX, y: snappedMinY,
+                         width: (box.maxX / grid).rounded(.up) * grid - snappedMinX,
+                         height: (box.maxY / grid).rounded(.up) * grid - snappedMinY)
+            let intruder = (0..<n).contains { !members.contains($0) && frames[$0].intersects(box) }
+            guard !intruder else { continue }
+            let kind = boundary.kind.isEmpty ? "Boundary"
+                : (boundary.kind == "Node" ? "Node" : "\(boundary.kind) Boundary")
+            // The caption sits in the bottom-left corner, where arrows leaving
+            // the bottom row also pass. Give it only the room up to the first
+            // arrow that crosses its line, and say less rather than be struck
+            // through: drop the «kind», then shorten the name.
+            let captionY = box.maxY - 6 - captionHeight / 2
+            let startX = box.minX + 10
+            var available = box.maxX - 10 - startX
+            for route in routes {
+                for (p, q) in zip(route.points, route.points.dropFirst())
+                where p.x == q.x && p.x > startX
+                    && min(p.y, q.y) < captionY + captionHeight / 2
+                    && max(p.y, q.y) > captionY - captionHeight / 2 {
+                    available = min(available, p.x - 6 - startX)
+                }
+            }
+            var caption = "\(boundary.label)  \u{00AB}\(kind)\u{00BB}"
+            if measure(caption, 10.5).width > available { caption = boundary.label }
+            while caption.count > 1, measure(caption, 10.5).width > available {
+                caption = String(caption.dropLast(caption.hasSuffix("…") ? 2 : 1)) + "…"
+            }
+            let captionWidth = measure(caption, 10.5).width
+            boundaryFrames.append(C4Layout.Frame(
+                rect: box, caption: caption,
+                captionCenter: CGPoint(x: startX + captionWidth / 2, y: captionY),
+                depth: depth))
+        }
+        boundaryFrames.sort { $0.depth < $1.depth }
+
         let edges: [C4Layout.Edge] = routes.map {
             C4Layout.Edge(points: $0.points, label: $0.label, labelPoint: $0.labelPoint)
         }
@@ -423,6 +639,7 @@ extension DiagramLayoutEngine {
         let width = min(max(finalWidth, 1), 3999)
         let height = min(max(canvasHeight, 1), 3999)
         return (C4Layout(size: CGSize(width: width, height: height),
-                         title: diagram.title, boxes: boxes, edges: edges), canvasHeight)
+                         title: diagram.title, boxes: boxes, edges: edges,
+                         frames: boundaryFrames), canvasHeight)
     }
 }

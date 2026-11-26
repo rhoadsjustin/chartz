@@ -44,6 +44,9 @@ public struct Flowchart: Hashable, Sendable {
         /// Display text; falls back to `id` when none is declared.
         public var label: String
         public var shape: NodeShape
+        /// Classes bound with `id:::name` where this node was written.
+        /// (Chartz addition; see FlowchartStyle.swift.)
+        public var styleClasses: [String] = []
     }
 
     /// A connection between two nodes.
@@ -115,6 +118,9 @@ public struct Flowchart: Hashable, Sendable {
     /// Subgraph grouping boxes, in declaration order; empty for a flat chart
     /// (the common case — the layout takes a zero-overhead fast path).
     public var subgraphs: [Subgraph]
+    /// Resolved `classDef` / `class` / `:::` / `style` styling, by node id.
+    /// Only nodes that end up styled appear. (Chartz addition.)
+    public var nodeStyles: [String: NodeStyle] = [:]
 
     public init(direction: Direction, nodes: [Node], edges: [Edge],
                 subgraphs: [Subgraph] = []) {

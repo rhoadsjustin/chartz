@@ -105,9 +105,13 @@ extension DiagramLayoutEngine {
     /// renderer only draws.
     public static func layout(_ chart: Flowchart, measure: DiagramTextMeasurer,
                               spacing: DiagramSpacing = .regular) -> FlowchartLayout {
-        DiagramTextScale.run(spacing, measure) { measure in
+        var layout = DiagramTextScale.run(spacing, measure) { measure in
             scaledLayout(chart, measure: measure, spacing: spacing)
         }
+        // Styling changes how a node is painted, never where it goes, so it
+        // rides along beside the geometry instead of through it.
+        layout.nodeStyles = chart.nodeStyles
+        return layout
     }
 
     /// ``layout(_:measure:spacing:)`` with `measure` already at the text scale.

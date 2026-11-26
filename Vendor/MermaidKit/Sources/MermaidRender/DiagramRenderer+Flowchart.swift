@@ -99,10 +99,19 @@ extension DiagramRenderer {
         }
 
         for node in layout.nodes {
+            // Per-node styling from `classDef` / `style` (Chartz addition;
+            // keep in step with RenderScene+Flowchart). Unstyled nodes fall
+            // through to the theme, exactly as before.
+            let style = layout.nodeStyles[node.id]
+            let nodeFill = style?.fill.map(platformColor) ?? fill
+            let nodeStroke = style?.stroke.map(platformColor) ?? stroke
+            let nodeLineWidth = CGFloat(style?.strokeWidth ?? 1)
+            let nodeDashed = style?.dashed ?? false
+            let labelColor = style.map { platformColor($0.labelColor(default: theme.resolved.ink)) } ?? theme.ink
             context.saveGState()
-            context.setFillColor(resolvedCGColor(fill))
-            context.setStrokeColor(resolvedCGColor(stroke))
-            context.setLineWidth(1)
+            context.setFillColor(resolvedCGColor(nodeFill))
+            context.setStrokeColor(resolvedCGColor(nodeStroke))
+            context.setLineWidth(nodeLineWidth)
 
             // State-diagram terminals draw specially: a filled dot and a
             // ringed dot, in ink rather than the accent tint.
@@ -118,10 +127,10 @@ extension DiagramRenderer {
             }
             if node.shape == .cylinder {
                 context.restoreGState()
-                let capH = drawCylinder(node.frame, fill: fill, stroke: stroke, in: context)
+                let capH = drawCylinder(node.frame, fill: nodeFill, stroke: nodeStroke, in: context)
                 // Center the label in the body, below the top cap.
                 drawText(node.label, center: CGPoint(x: node.frame.midX, y: node.frame.midY + capH / 2),
-                         size: 12, weight: .medium, color: theme.ink, in: context)
+                         size: 12, weight: .medium, color: labelColor, in: context)
                 continue
             }
 
@@ -148,13 +157,13 @@ extension DiagramRenderer {
                 path = CGPath(roundedRect: node.frame, cornerWidth: 4, cornerHeight: 4, transform: nil)
             }
             context.restoreGState()
-            fillStrokeShape(path, fill: fill, stroke: stroke, in: context)
+            fillStrokeShape(path, fill: nodeFill, stroke: nodeStroke, lineWidth: nodeLineWidth, dashed: nodeDashed, in: context)
 
             // Subroutine: the twin inner rails that make a `[[ … ]]` box.
             if node.shape == .subroutine {
                 let inset: CGFloat = min(6, node.frame.width / 4)
                 context.saveGState()
-                context.setStrokeColor(resolvedCGColor(stroke))
+                context.setStrokeColor(resolvedCGColor(nodeStroke))
                 context.setLineWidth(1)
                 for x in [node.frame.minX + inset, node.frame.maxX - inset] {
                     context.move(to: CGPoint(x: x, y: node.frame.minY))
@@ -166,7 +175,7 @@ extension DiagramRenderer {
             // Double circle: the inner ring (`DiagramLayoutEngine.doubleCircleGap` in).
             if node.shape == .doubleCircle {
                 context.saveGState()
-                context.setStrokeColor(resolvedCGColor(stroke))
+                context.setStrokeColor(resolvedCGColor(nodeStroke))
                 context.setLineWidth(1)
                 context.strokeEllipse(in: node.frame.insetBy(dx: 4, dy: 4))
                 context.restoreGState()
@@ -175,8 +184,14 @@ extension DiagramRenderer {
             // A flag's label centers on the part right of its notch.
             let notch = node.shape == .asymmetric ? min(node.frame.width * 0.22, node.frame.height / 2) : 0
             drawText(node.label, center: CGPoint(x: node.frame.midX + notch / 2, y: node.frame.midY),
-                     size: 12, weight: .medium, color: theme.ink, in: context)
+                     size: 12, weight: .medium, color: labelColor, in: context)
         }
+    }
+
+    /// A platform colour for a colour that came from the diagram source.
+    static func platformColor(_ color: DiagramColor) -> PlatformColor {
+        PlatformColor(red: CGFloat(color.red), green: CGFloat(color.green),
+                      blue: CGFloat(color.blue), alpha: CGFloat(color.alpha))
     }
 }
 #endif

@@ -5,8 +5,8 @@ Vision Pro and Apple TV. Diagrams are drawn by a native Swift renderer that we
 own: a vendored copy of [MermaidKit](https://github.com/2389-research/MermaidKit)
 (MIT) in `Vendor/MermaidKit`, with no JavaScript and no web view.
 
-Milestones 1 (skeleton), 2 (editor polish), 3 (Structurizr DSL) and 4 (Apple
-TV presenter) are in. The app builds for all
+Milestones 1 (skeleton), 2 (editor polish), 3 (Structurizr DSL), 4 (Apple TV
+presenter) and most of 5 (renderer gaps) are in. The app builds for all
 four destinations with Xcode 27.1 and has been run on the iPhone Duo simulator
 in every posture. See "Build status" below for what has and has not been
 exercised.
@@ -47,6 +47,12 @@ already in the repo, with tvOS added to its `Package.swift`; see
   preview switches between views. See "Structurizr support" below.
 - **The text decides the language.** A source that starts with `workspace` is
   Structurizr, whatever the file is called; anything else is Mermaid.
+- **C4 boundaries** are drawn: a dashed, captioned frame round the elements
+  inside a `System_Boundary`, `Container_Boundary`, `Enterprise_Boundary` or
+  deployment `Node`, nested ones included. Structurizr container views get
+  their system frame from this.
+- **Flowchart node styling**: `classDef`, `class`, `:::` and `style` set a
+  node's fill, border colour, border width, dashes and text colour.
 - **Templates** menu with eight starters. It asks before replacing source you
   have edited.
 - **Diagnostics** under the code pane, with line numbers.
@@ -121,6 +127,9 @@ Supported:
 - The `External` tag draws a person or system as external; the `Database`
   tag (or a technology containing "database") marks a container as one.
 
+Container views draw the system as a captioned boundary frame round its
+containers.
+
 Skipped with a note in the diagnostics, not rejected: `component`, `dynamic`,
 `deployment` and `filtered` views, `styles` and themes, deployment
 environments, hierarchical identifiers, and any other keyword it does not
@@ -142,7 +151,9 @@ Last checked 24 Nov 2026 with Xcode 27.1.
 | tvOS simulator | yes | not run: no tvOS runtime installed on the build Mac. The presenter and gallery are hosted off screen on the Mac by tests, which is not the same as running on a TV. |
 | visionOS simulator | yes | no visionOS runtime installed on the build Mac |
 
-`swift test` inside `Packages/DiagramKit` runs 55 tests: the syntax scanner
+There are two test suites. `swift test` inside `Vendor/MermaidKit` runs the
+renderer's own 525 tests (upstream's, plus 15 for the boundary and styling
+work); all pass. `swift test` inside `Packages/DiagramKit` runs 55 tests: the syntax scanner
 and editing rules, format detection, every template through the real
 renderer, all three export formats, the Structurizr parser and view lowering
 (including every prefix of a workspace, as the editor sees while you type),
@@ -165,7 +176,9 @@ Still open:
   need `Config/Signing.local.xcconfig`.
 - **Mac sandbox.** The Mac build is unsandboxed for now. Before TestFlight,
   add App Sandbox with user-selected file read/write.
-- **MermaidKit's own tests** have not been run against the vendored copy.
+- **Boundaries and styling were looked at in rendered pictures and in the
+  editor on the Duo simulator** with four hand-written diagrams. Large or
+  deeply nested C4 models have not been tried.
 - **Fold handling is iOS only.** `ArrangementView` is in the iOS 27.1 SDK but
   not in the macOS, visionOS or tvOS 27.0 SDKs that ship with Xcode 27.1.
 - **Folding or unfolding rebuilds the code view**, so the caret, scroll
@@ -185,13 +198,31 @@ Still open:
 
 ## Renderer work we now own
 
-Gaps in MermaidKit that matter for architecture diagrams, in rough priority:
+Done in the vendored renderer (details in `Vendor/MermaidKit/VENDORED.md`):
 
-- **C4 boundaries are flattened.** `System_Boundary`, `Container_Boundary` and
-  deployment nodes keep their elements but lose the enclosing frame. This now
-  shows in every Structurizr container view: the containers are drawn, the
-  box around the system is not.
-- **Styling is ignored**: `classDef`, `style`, `linkStyle`, `%%{init}`.
+- **C4 boundaries.** Upstream kept a boundary's elements and dropped its
+  frame. Each outermost boundary now owns a block of columns in every row it
+  reaches, so its boxes sit together and a frame can go round them; boxes
+  outside move to either side. A nested frame is drawn when its boxes form a
+  clean rectangle and left out when they do not. Diagrams with no boundaries
+  lay out exactly as before.
+- **Flowchart node styling.** `classDef`, `class A,B name`, `A:::name` and
+  `style A …`, with `fill`, `stroke`, `stroke-width`, `stroke-dasharray` and
+  `color`. Colours: hex, `rgb()` / `rgba()`, and common names. A filled node
+  with no text colour gets black or white text, whichever reads better.
+
+Still gaps:
+
+- **`linkStyle` is read and ignored.** Edges are still all drawn alike. The
+  layout rebuilds edges in several places without keeping their index, so
+  this needs more plumbing than node styling did.
+- **`%%{init}` and themes are ignored.**
+- **Styling is flowcharts only.** `classDef` in state and class diagrams, and
+  C4's `UpdateElementStyle`, do nothing.
+- **Sibling boundaries are laid side by side** even when they never share a
+  row, which is wider than it needs to be.
+- **A boundary caption gives way to arrows.** When an arrow would cross it,
+  the caption drops its «System Boundary» tag, then shortens the name.
 - **No hit-testing.** The platform-free `RenderScene` has geometry but no link
   back to source lines; tap-a-node-to-jump needs that.
 
@@ -204,7 +235,8 @@ Gaps in MermaidKit that matter for architecture diagrams, in rough priority:
    renderer. Done.
 4. Apple TV presenter with iCloud sync. Built; sync and the TV itself are
    unverified (see "Build status").
-5. Renderer gaps above: C4 boundaries first, then styling.
+5. Renderer gaps: C4 boundaries first, then styling. Boundaries and
+   flowchart node styling are done; `linkStyle` and `%%{init}` are not.
 
 ## Naming
 

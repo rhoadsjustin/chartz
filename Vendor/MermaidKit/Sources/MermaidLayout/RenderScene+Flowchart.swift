@@ -95,6 +95,15 @@ extension RenderScene {
         // 4. Nodes on top, each with its centered label.
         for node in layout.nodes {
             let f = node.frame
+            // Per-node styling from `classDef` / `style` (Chartz addition;
+            // keep in step with DiagramRenderer+Flowchart).
+            let style = layout.nodeStyles[node.id]
+            let fillColor = style?.fill ?? nodeFill
+            let strokeStyle = Stroke(
+                color: style?.stroke ?? nodeStroke.color,
+                width: style?.strokeWidth.map { CGFloat($0) } ?? nodeStroke.width,
+                dashed: style?.dashed ?? nodeStroke.dashed)
+            let labelColor = style?.labelColor(default: theme.ink) ?? theme.ink
             switch node.shape {
             case .stateStart:
                 // A solid filled dot in 75%-ink; no label.
@@ -128,18 +137,18 @@ extension RenderScene {
                     .close,
                 ]
                 elements.append(.shape(Shape(
-                    path: .path(silhouette), fill: nodeFill, stroke: nodeStroke)))
+                    path: .path(silhouette), fill: fillColor, stroke: strokeStyle)))
                 let rim: [PathVerb] = [
                     .move(CGPoint(x: f.minX, y: bodyTop)),
                     .quad(to: CGPoint(x: f.maxX, y: bodyTop),
                           control: CGPoint(x: f.midX, y: bodyTop + capH * 2)),
                 ]
                 elements.append(.shape(Shape(
-                    path: .path(rim), fill: nil, stroke: nodeStroke)))
+                    path: .path(rim), fill: nil, stroke: strokeStyle)))
                 elements.append(.text(Text(
                     string: node.label,
                     center: CGPoint(x: f.midX, y: f.midY + capH / 2),
-                    fontSize: 12, weight: .medium, color: theme.ink)))
+                    fontSize: 12, weight: .medium, color: labelColor)))
                 continue
             case .rectangle, .rounded, .stadium, .circle, .doubleCircle, .diamond, .hexagon,
                  .subroutine, .parallelogram, .parallelogramAlt, .trapezoid, .trapezoidAlt,
@@ -185,12 +194,12 @@ extension RenderScene {
             }
             // As Flowchart.NodeShape grows, add the matching ShapePath here
             // and in the CoreGraphics renderer together.
-            elements.append(.shape(Shape(path: path, fill: nodeFill, stroke: nodeStroke)))
+            elements.append(.shape(Shape(path: path, fill: fillColor, stroke: strokeStyle)))
             if node.shape == .doubleCircle {
                 // The inner ring (match DiagramRenderer).
                 let gap = DiagramLayoutEngine.doubleCircleGap
                 elements.append(.shape(Shape(
-                    path: .ellipse(f.insetBy(dx: gap, dy: gap)), fill: nil, stroke: nodeStroke)))
+                    path: .ellipse(f.insetBy(dx: gap, dy: gap)), fill: nil, stroke: strokeStyle)))
             }
             if node.shape == .subroutine {
                 // Twin inner rails of a `[[ … ]]` box (match DiagramRenderer).
@@ -198,7 +207,7 @@ extension RenderScene {
                 for x in [f.minX + inset, f.maxX - inset] {
                     elements.append(.polyline(Polyline(
                         points: [CGPoint(x: x, y: f.minY), CGPoint(x: x, y: f.maxY)],
-                        stroke: nodeStroke, startArrow: false, endArrow: false)))
+                        stroke: strokeStyle, startArrow: false, endArrow: false)))
                 }
             }
             // A flag's label centers on the part right of its notch.
@@ -206,7 +215,7 @@ extension RenderScene {
             elements.append(.text(Text(
                 string: node.label,
                 center: CGPoint(x: f.midX + notch / 2, y: f.midY),
-                fontSize: 12, weight: .medium, color: theme.ink)))
+                fontSize: 12, weight: .medium, color: labelColor)))
         }
 
         return RenderScene(size: layout.size, background: theme.canvas, elements: elements, measure: measure)
