@@ -17,6 +17,25 @@ extension DiagramRenderer {
     static func draw(_ layout: C4Layout, theme: DiagramTheme, in context: CGContext) {
         drawDiagramTitle(layout.title, width: layout.size.width, theme: theme, in: context)
 
+        // Boundary frames go underneath everything: dashed outlines with a
+        // faint wash, outermost first. (Chartz addition; keep in step with
+        // RenderScene+C4.)
+        for frame in layout.frames {
+            let path = CGPath(roundedRect: frame.rect, cornerWidth: 8, cornerHeight: 8, transform: nil)
+            context.saveGState()
+            context.setFillColor(resolvedCGColor(theme.ink.withAlphaComponent(0.025)))
+            context.addPath(path)
+            context.fillPath()
+            context.setStrokeColor(resolvedCGColor(theme.ink.withAlphaComponent(0.35)))
+            context.setLineWidth(1)
+            context.setLineDash(phase: 0, lengths: [5, 4])
+            context.addPath(path)
+            context.strokePath()
+            context.restoreGState()
+            drawText(frame.caption, center: frame.captionCenter,
+                     size: 10.5, weight: .medium, color: theme.secondaryTextColor, in: context)
+        }
+
         // Relationship arrows first, so box fills tuck over the shaft ends.
         // Routes are orthogonal polylines through the empty channels.
         for edge in layout.edges {

@@ -4,9 +4,8 @@ import CoreGraphics
 #endif
 
 extension DiagramScene {
-    /// Lowers a C4 model layout to the common scene IR. Every element is a
-    /// leaf box (boundaries and deployment nodes are flattened away by the
-    /// parser, so nothing here is a container). Relationships are orthogonal
+    /// Lowers a C4 model layout to the common scene IR. Elements are leaf
+    /// boxes; boundary and deployment-node frames are containers. Relationships are orthogonal
     /// routed polylines that thread the empty channels between rows; each label
     /// is free-standing at a point on its route that sits in a clear channel
     /// band, clamped to stay on-canvas.
@@ -14,7 +13,12 @@ extension DiagramScene {
         DiagramScene(
             name: "c4",
             size: layout.size,
-            nodes: layout.boxes.enumerated().map { i, box in
+            // Boundary frames are containers: boxes sit inside them and
+            // arrows cross their outline, which the linter allows for a
+            // container and not for a leaf. (Chartz addition.)
+            nodes: layout.frames.map { frame in
+                Node(id: frame.caption, frame: frame.rect, isContainer: true)
+            } + layout.boxes.enumerated().map { i, box in
                 let title = box.titleLines.joined(separator: " ")
                 let id = title.isEmpty ? "\(box.stereotype) #\(i)" : title
                 return Node(id: id, frame: box.frame, isContainer: false)

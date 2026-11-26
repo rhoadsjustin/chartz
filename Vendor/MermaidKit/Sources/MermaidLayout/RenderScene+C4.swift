@@ -44,6 +44,19 @@ extension RenderScene {
                 fontSize: 12.5, weight: .semibold, color: theme.ink)))
         }
 
+        // 1b. Boundary frames, underneath everything else: dashed outlines
+        //     with a faint wash, outermost first. (Chartz addition; keep in
+        //     step with DiagramRenderer+C4.)
+        for frame in layout.frames {
+            elements.append(.shape(Shape(
+                path: .roundedRect(frame.rect, radius: 8),
+                fill: theme.ink.withAlpha(0.025),
+                stroke: Stroke(color: theme.ink.withAlpha(0.35), width: 1, dashed: true))))
+            elements.append(.text(Text(
+                string: frame.caption, center: frame.captionCenter,
+                fontSize: 10.5, weight: .medium, color: theme.secondaryText)))
+        }
+
         // 2. Relationship shafts (50%-ink), each with a 60%-ink arrowhead. The
         //    head is separate geometry so the shaft carries no arrow flag.
         for edge in layout.edges {

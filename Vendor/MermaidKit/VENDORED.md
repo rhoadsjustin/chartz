@@ -23,6 +23,30 @@ out; delete or fix those tests as they come up.
   `VectorDiagram` and `MermaidRenderer.vectorDiagram(source:theme:spacing:)`.
   Exposes the internal layout-and-draw plan the raster and PDF paths already
   share, so the app can redraw at any zoom level. No upstream file was edited.
+- **C4 boundary frames.** Upstream flattened boundaries.
+  - `MermaidParser+C4.swift`: `C4Diagram.Boundary`, `C4Diagram.boundaries`,
+    `Element.boundary`; the parser tracks open `…Boundary(…) {` / `Node(…) {`
+    blocks instead of skipping them.
+  - `DiagramLayoutC4.swift`: `C4Layout.Frame` and `C4Layout.frames`; a block
+    of columns per outermost boundary, extra row spacing for frame captions.
+    The no-boundary path is unchanged.
+  - `DiagramRenderer+C4.swift`, `RenderScene+C4.swift`: draw the frames.
+  - `DiagramScene+C4.swift`: frames are container nodes for the linter.
+- **Flowchart node styling.** Upstream read and discarded it.
+  - `FlowchartStyle.swift` (new): `Flowchart.NodeStyle`, CSS colour parsing.
+  - `MermaidModels.swift`: `Flowchart.Node.styleClasses`,
+    `Flowchart.nodeStyles`.
+  - `MermaidParser.swift`: `classDef`, `class`, `:::` and `style` are
+    collected and resolved into `nodeStyles`. `linkStyle` is still ignored.
+  - `DiagramLayout.swift`, `DiagramLayoutFlowchart.swift`,
+    `GridQuantizer.swift`: `FlowchartLayout.nodeStyles` carried alongside the
+    geometry.
+  - `DiagramRenderer+Flowchart.swift`, `RenderScene+Flowchart.swift`,
+    `DiagramRenderer+GraphShared.swift`: apply it when drawing nodes.
+- `Tests/MermaidLayoutTests/ChartzAdditionsTests.swift` (new): tests for the
+  two additions above.
+- `Tests/MermaidLayoutTests/CaptionPlacementEquivalenceTests.swift`: the
+  oracle cases in upstream's `tools/` folder (not vendored) are now optional.
 
 Add a line here for every change, so pulling in an upstream fix later is a
 matter of reading this list.

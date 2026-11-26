@@ -287,12 +287,14 @@ extension DiagramRenderer {
     /// every diagram shape (rectangle, diamond, stadium, circle) so they stay
     /// visually consistent across flowchart, class, ER, and state diagrams.
     static func fillStrokeShape(
-        _ path: CGPath, fill: PlatformColor, stroke: PlatformColor, in context: CGContext
+        _ path: CGPath, fill: PlatformColor, stroke: PlatformColor,
+        lineWidth: CGFloat = 1, dashed: Bool = false, in context: CGContext
     ) {
         context.saveGState()
         context.setFillColor(resolvedCGColor(fill))
         context.setStrokeColor(resolvedCGColor(stroke))
-        context.setLineWidth(1)
+        context.setLineWidth(lineWidth)
+        if dashed { context.setLineDash(phase: 0, lengths: [5, 4]) }
         context.addPath(path)
         context.drawPath(using: .fillStroke)
         context.restoreGState()

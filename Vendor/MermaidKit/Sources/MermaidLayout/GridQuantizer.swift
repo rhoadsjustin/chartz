@@ -107,7 +107,9 @@ enum GridQuantizer {
         let maxY = (nodes.map(\.frame.maxY) + containers.map(\.frame.maxY)).max() ?? layout.size.height
         let size = CGSize(width: up(Swift.max(layout.size.width, maxX)),
                           height: up(Swift.max(layout.size.height, maxY)))
-        return FlowchartLayout(size: size, nodes: nodes, edges: edges, containers: containers)
+        var styled = FlowchartLayout(size: size, nodes: nodes, edges: edges, containers: containers)
+        styled.nodeStyles = layout.nodeStyles
+        return styled
     }
 
     /// Euclidean distance from `p` to the nearest point of `r` (0 when inside).

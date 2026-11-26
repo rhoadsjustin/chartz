@@ -795,7 +795,17 @@ public enum MermaidParser {
             return false
         }
 
+        // Styling (Chartz addition). Collected as the statements are read and
+        // resolved once every node is known, so order in the source does not
+        // matter: a `classDef` may come after the nodes that use it.
+        var classDefs: [String: Flowchart.NodeStyle] = [:]
+        var classesOf: [String: [String]] = [:]
+        var directStyles: [String: Flowchart.NodeStyle] = [:]
+
         func note(_ node: Flowchart.Node) {
+            for name in node.styleClasses where !(classesOf[node.id] ?? []).contains(name) {
+                classesOf[node.id, default: []].append(name)
+            }
             if let existing = nodes[node.id] {
                 // A later declaration with an explicit label wins over a bare id.
                 if node.label != node.id || existing.label == existing.id {
@@ -881,9 +891,37 @@ public enum MermaidParser {
                     nodes[node.id] = node
                     order.append(node.id)
                 }
+                // `style A fill:#f9f,stroke:#333`: everything after the id.
+                let rest = line.dropFirst("style".count).drop(while: \.isWhitespace)
+                    .drop(while: { !$0.isWhitespace })
+                if let id = parseNodeToken(target)?.id {
+                    directStyles[id] = (directStyles[id] ?? .init()).merging(.init(css: String(rest)))
+                }
                 continue
             }
-            if ["classDef", "class", "click"].contains(where: { startsWithKeyword(line, $0) }) {
+            // `classDef a,b fill:#f9f`: one or more class names, then a style.
+            if startsWithKeyword(line, "classDef") {
+                let rest = line.dropFirst("classDef".count).drop(while: \.isWhitespace)
+                let names = rest.prefix(while: { !$0.isWhitespace })
+                let style = Flowchart.NodeStyle(css: String(rest.dropFirst(names.count)))
+                for name in names.split(separator: ",") where !name.isEmpty {
+                    classDefs[String(name)] = (classDefs[String(name)] ?? .init()).merging(style)
+                }
+                continue
+            }
+            // `class A,B name`: bind existing nodes to a class.
+            if startsWithKeyword(line, "class") {
+                let words = line.dropFirst("class".count)
+                    .split(whereSeparator: { $0.isWhitespace || $0 == ";" })
+                if words.count >= 2 {
+                    let name = String(words[1])
+                    for id in words[0].split(separator: ",") where !(classesOf[String(id)] ?? []).contains(name) {
+                        classesOf[String(id), default: []].append(name)
+                    }
+                }
+                continue
+            }
+            if startsWithKeyword(line, "click") {
                 continue
             }
 
@@ -928,12 +966,21 @@ public enum MermaidParser {
         // that drew nothing because it couldn't read a statement isn't. A
         // subgraph's box is something drawn, as a node is.
         guard !nodes.isEmpty || !subgraphOrder.isEmpty || setAsideCount == 0 else { return nil }
-        return Flowchart(
+        var chart = Flowchart(
             direction: direction,
             nodes: order.compactMap { nodes[$0] },
             edges: edges,
             subgraphs: subgraphOrder.compactMap { subgraphs[$0] }
         )
+        // `classDef default` first, then each class in the order it was
+        // bound, then the node's own `style`: later layers win.
+        for id in order where nodes[id] != nil {
+            var style = classDefs["default"] ?? .init()
+            for name in classesOf[id] ?? [] { style = style.merging(classDefs[name] ?? .init()) }
+            style = style.merging(directStyles[id] ?? .init())
+            if !style.isEmpty { chart.nodeStyles[id] = style }
+        }
+        return chart
     }
 
     /// Normalizes a `direction` token (`TB` is mermaid's alias for `TD`).
@@ -1321,10 +1368,21 @@ public enum MermaidParser {
     /// `a] --> B[c`.
     static func parseNodeToken(_ token: Substring) -> Flowchart.Node? {
         var trimmed = token.trimmingCharacters(in: .whitespaces)
-        // `:::className` binds a style class — styling we ignore; without
-        // this strip the tokenizer rejected the node and the line vanished.
+        // `:::className` binds a style class. Strip it before reading the
+        // node (the tokenizer would reject it) and hand it back on the node.
+        var styleClasses: [String] = []
         if let styleClass = trimmed.range(of: ":::") {
+            styleClasses = trimmed[styleClass.upperBound...]
+                .components(separatedBy: ":::")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
             trimmed = String(trimmed[..<styleClass.lowerBound]).trimmingCharacters(in: .whitespaces)
+        }
+        if !styleClasses.isEmpty {
+            // Re-enter without the suffix, then attach the classes.
+            guard var node = parseNodeToken(Substring(trimmed)) else { return nil }
+            node.styleClasses = styleClasses
+            return node
         }
         guard !trimmed.isEmpty else { return nil }
 

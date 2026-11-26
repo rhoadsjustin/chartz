@@ -51,11 +51,15 @@ toolchain is present, `swift build --target MermaidLayout` and its tests are
 the things that can run. If nothing can be compiled, say so in the PR rather
 than implying the change was built.
 
-Milestones 1 to 4 build for iOS, macOS, tvOS and visionOS (Xcode 27.1) and
+Milestones 1 to 5 build for iOS, macOS, tvOS and visionOS (Xcode 27.1) and
 have been run on the iPhone Duo simulator only. The Apple TV presenter and
 iCloud sync have never run on a TV or against iCloud. README.md "Build status"
 lists what has been exercised; keep it current. Run `swift test` in
-`Packages/DiagramKit` after any change there.
+`Packages/DiagramKit` after any change there, and in `Vendor/MermaidKit`
+after any change to the renderer (525 tests, about 30 seconds). Renderer
+changes must land in both painters: `DiagramRenderer+X.swift` (CoreGraphics)
+and `RenderScene+X.swift` (SVG), and in `DiagramScene+X.swift` if they draw
+new text, or the conformance test fails.
 
 Command-line build, after `scripts/bootstrap.sh`:
 
